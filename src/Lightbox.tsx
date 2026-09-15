@@ -106,6 +106,7 @@ function IconButton({
     ariaLabel,
     disabled,
     onClick,
+    onContextMenu,
     children
 }: {
     tooltip: string;
@@ -114,6 +115,7 @@ function IconButton({
     ariaLabel?: string;
     disabled?: boolean;
     onClick(e: React.MouseEvent<HTMLButtonElement>): void;
+    onContextMenu?(e: React.MouseEvent<HTMLButtonElement>): void;
     children: React.ReactNode;
 }) {
     return (
@@ -124,6 +126,7 @@ function IconButton({
                 aria-label={ariaLabel ?? tooltip}
                 disabled={disabled}
                 onClick={onClick}
+                onContextMenu={onContextMenu}
             >
                 {children}
             </button>
@@ -192,7 +195,7 @@ function AvatarLightbox({ userId, initialIndex, modalProps }: { userId: string; 
                 handleConfirm(confirm.dataset.confirm ?? "");
                 return;
             }
-            if (target.closest?.("[data-nav]") || target.closest?.("[data-thumb]") || target.closest?.(`.${cl("lb-confirm")}`)) return;
+            if (target.closest?.("[data-nav]") || target.closest?.("[data-thumb]") || target.closest?.(`.${cl("lb-confirm")}`) || target.closest?.(`.${cl("lb-menu")}`)) return;
             const { clientX, clientY } = e;
             const w = window.innerWidth;
             const h = window.innerHeight;
@@ -297,12 +300,11 @@ function AvatarLightbox({ userId, initialIndex, modalProps }: { userId: string; 
 
     const clearAll = () => setConfirmClear(true);
 
-    const openGearMenu = (e: React.MouseEvent) => {
+    const openGearMenu = (e: React.MouseEvent<HTMLButtonElement>) => {
+        e.preventDefault();
         e.stopPropagation();
-        const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-        const fakeEvent = { clientX: rect.right, clientY: rect.bottom + 6, preventDefault() {} } as unknown as React.MouseEvent;
-        ContextMenuApi.openContextMenu(fakeEvent, () => (
-            <Menu.Menu navId="vc-avh-lb-actions" position="right" className={cl("lb-menu")} onClose={() => void 0} aria-label="Avatar history actions">
+        ContextMenuApi.openContextMenu(e, () => (
+            <Menu.Menu navId="vc-avh-lb-actions" className={cl("lb-menu")} onClose={ContextMenuApi.closeContextMenu} aria-label="Avatar history actions">
                 <Menu.MenuGroup label="Manage">
                     <Menu.MenuItem id="remember" label="Remember current avatar" action={() => void rememberCurrent()} />
                     <Menu.MenuItem id="track" label={isTracked(userId) ? "Stop tracking changes" : "Track avatar changes"} action={toggleTrack} />
@@ -316,11 +318,23 @@ function AvatarLightbox({ userId, initialIndex, modalProps }: { userId: string; 
         ));
     };
 
+    const openGearMenuFromClick = (e: React.MouseEvent<HTMLButtonElement>) => {
+        e.stopPropagation();
+        const rect = e.currentTarget.getBoundingClientRect();
+        e.currentTarget.dispatchEvent(new MouseEvent("contextmenu", {
+            bubbles: true,
+            cancelable: true,
+            clientX: rect.right,
+            clientY: rect.bottom + 6,
+            button: 2,
+        }));
+    };
+
     const openImageContextMenu = (e: React.MouseEvent) => {
         e.preventDefault();
         e.stopPropagation();
         ContextMenuApi.openContextMenu(e, () => (
-            <Menu.Menu navId="vc-avh-lb-img-menu" className={cl("lb-menu")} onClose={() => void 0} aria-label="Avatar options">
+            <Menu.Menu navId="vc-avh-lb-img-menu" className={cl("lb-menu")} onClose={ContextMenuApi.closeContextMenu} aria-label="Avatar options">
                 <Menu.MenuItem id="download" label={rec.hasBlob ? "Download (offline copy saved)" : "Download"} action={() => void downloadAvatar(userId, rec)} />
                 <Menu.MenuItem id="copy-url" label="Copy URL" action={() => void copyWithToast(cdnUrl, "Avatar URL copied")} />
                 <Menu.MenuItem id="delete" label="Delete" color="danger" action={() => setConfirmDelete(true)} />
@@ -441,7 +455,8 @@ function AvatarLightbox({ userId, initialIndex, modalProps }: { userId: string; 
                 <IconButton
                     tooltip="More"
                     className={cl("lb-btn")}
-                    onClick={e => openGearMenu(e)}
+                    onClick={openGearMenuFromClick}
+                    onContextMenu={openGearMenu}
                 >
                     <MainSettingsIcon width={24} height={24} />
                 </IconButton>

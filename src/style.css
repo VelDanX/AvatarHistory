@@ -163,6 +163,7 @@
 }
 
 .vc-avh-lb-img {
+    pointer-events: auto;
     max-width: 82vw;
     max-height: 72vh;
     border-radius: 16px;
