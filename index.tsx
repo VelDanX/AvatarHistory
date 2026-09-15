@@ -136,7 +136,12 @@ const userContextPatch: NavContextMenuPatchCallback = (children, { user }: { use
                     ? "Tracked automatically (friend)"
                     : isTracked(user.id) ? "Stop tracking avatar changes" : "Track avatar changes"}
                 disabled={autoTracked}
-                action={() => void setTracked(user.id, !isTracked(user.id))}
+                action={() => {
+                    const next = !isTracked(user.id);
+                    void setTracked(user.id, next).then(() => {
+                        if (next) void recordUserAvatar(user);
+                    });
+                }}
             />
         );
     } else {
