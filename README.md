@@ -16,6 +16,20 @@ Vencord / Equicord userplugin that passively records avatar changes and lets you
 - Export / import history as JSON
 - Auto-purge of records that no longer resolve on the CDN
 
+## Preview
+
+**Right-click a user** — the plugin adds "Remember current avatar" (save the current avatar into the history) and "Track avatar changes" (start tracking this user's avatar changes):
+
+![Context menu](docs/screenshots/context-menu.png)
+
+**Profile section** — the user profile modal shows an "AVATAR HISTORY" section with a preview of the last 4 avatars; clicking any preview opens the fullscreen gallery:
+
+![Profile section](docs/screenshots/profile-section.png)
+
+**Lightbox** — fullscreen viewer over the whole history: large preview, a "1 of N" counter and the record timestamp (UTC) on top, an action bar at the bottom (download, copy URL, delete, "More" menu), and a rail of all saved avatars below:
+
+![Lightbox](docs/screenshots/lightbox.png)
+
 ## Settings
 
 | Setting | Default | Description |
@@ -90,6 +104,20 @@ GPL-3.0-or-later — see `LICENSE`.
 - Офлайн-копии (blobs ≤ 10 МБ) остаются доступными даже после удаления аватара с CDN
 - Экспорт / импорт истории в JSON
 - Автоочистка записей, которых больше нет на CDN
+
+## Превью
+
+**Клик правой кнопкой по пользователю** — плагин добавляет пункты «Remember current avatar» (сохранить текущий аватар в историю) и «Track avatar changes» (начать отслеживать смены аватара):
+
+![Контекстное меню](docs/screenshots/context-menu.png)
+
+**Секция в профиле** — в модалке профиля отображается секция «AVATAR HISTORY» с превью последних 4 аватаров; клик по любому превью открывает полноэкранную галерею:
+
+![Секция в профиле](docs/screenshots/profile-section.png)
+
+**Галерея (лайтбокс)** — полноэкранный просмотр всей истории: крупный аватар, счётчик «1 of N» и дата записи (UTC) сверху, панель действий снизу (скачивание, копия URL, удаление, меню «More») и лента всех сохранённых аватаров:
+
+![Лайтбокс](docs/screenshots/lightbox.png)
 
 ## Настройки
 
