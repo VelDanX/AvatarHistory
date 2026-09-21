@@ -149,7 +149,7 @@
 
 .vc-avh-lb-counter {
     font-weight: 700;
-    color: var(--text-normal);
+    color: var(--text-muted);
 }
 
 .vc-avh-lb-stage {
