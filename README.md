@@ -9,9 +9,13 @@ Vencord / Equicord userplugin that passively records avatar changes and lets you
 - Tracks your own avatar changes (toggle in settings)
 - Track any user via right-click → "Track avatar changes"
 - Optionally auto-track all your friends (toggle in settings)
+- Background tracking: avatars of tracked users are re-checked periodically — no need to open their profile
+- Polite to the API: background checks are paced, capped per interval and back off automatically on rate limits
+- Instant capture: any rendered avatar of a tracked user (member list, DMs, messages...) is recorded on the spot
 - Syncs the last 6 avatars that Discord keeps server-side
 - Profile section with a 4-avatar preview; click opens the fullscreen viewer
-- Lightbox: navigate, download, copy URL, delete, "remember current avatar"
+- Lightbox: navigate, download, copy URL, delete, "remember current avatar", set a saved avatar as your profile picture (toolbar button or image right-click menu)
+- Set any saved avatar of yours directly from the lightbox as your profile avatar (animated ones require Nitro)
 - Offline copies (blobs, ≤ 10 MB each) stay viewable even after the CDN drops an avatar
 - Export / import history as JSON
 - Auto-purge of records that no longer resolve on the CDN
@@ -26,7 +30,7 @@ Vencord / Equicord userplugin that passively records avatar changes and lets you
 
 ![Profile section](docs/screenshots/profile-section.png)
 
-**Lightbox** — fullscreen viewer over the whole history: large preview, a "1 of N" counter and the record timestamp (UTC) on top, an action bar at the bottom (download, copy URL, delete, "More" menu), and a rail of all saved avatars below:
+**Lightbox** — fullscreen viewer over the whole history: large preview, a "1 of N" counter and the record timestamp (UTC) on top, an action bar at the bottom (set as profile avatar for your own history, download, copy URL, delete, "More" menu), and a rail of all saved avatars below:
 
 ![Lightbox](docs/screenshots/lightbox.png)
 
@@ -36,6 +40,8 @@ Vencord / Equicord userplugin that passively records avatar changes and lets you
 | ------- | ------- | ----------- |
 | trackSelf | ✔ | Track your own avatar changes |
 | trackFriends | ✘ | Auto-track avatar changes of all your friends |
+| pollTracked | ✔ | Periodically re-check tracked users' avatars in the background |
+| pollIntervalMinutes | 10 | How often (minutes) tracked users' avatars are re-checked |
 
 ## Installation
 
@@ -98,9 +104,13 @@ GPL-3.0-or-later — see `LICENSE`.
 - Автоотслеживание смены своего аватара (тогл в настройках)
 - Отслеживание любого пользователя через ПКМ → «Track avatar changes»
 - Опциональное автоотслеживание всех друзей (тогл «Track friends»)
+- Фоновое отслеживание: аватарки отслеживаемых юзеров периодически перепроверяются — профиль открывать не нужно
+- Бережно к API: фоновые проверки идут с паузами, ограничены за интервал и сами отступают при рейт-лимитах
+- Мгновенный захват: любая отрисованная аватарка отслеживаемого юзера (список участников, DM, сообщения...) попадает в историю сразу
 - Синхронизация последних 6 аватаров с сервера Discord
 - Секция в профиле с превью 4 аватаров; клик открывает полноэкранный просмотр
-- Лайтбокс: листание, скачивание, копия URL, удаление, «запомнить текущий аватар»
+- Лайтбокс: листание, скачивание, копия URL, удаление, «запомнить текущий аватар», установка сохранённой аватарки как аватар профиля (кнопка на панели или ПКМ по картинке)
+- Любой сохранённый свой аватар можно сразу из лайтбокса поставить как аватар профиля (анимированные — нужен Nitro)
 - Офлайн-копии (blobs ≤ 10 МБ) остаются доступными даже после удаления аватара с CDN
 - Экспорт / импорт истории в JSON
 - Автоочистка записей, которых больше нет на CDN
@@ -115,7 +125,7 @@ GPL-3.0-or-later — see `LICENSE`.
 
 ![Секция в профиле](docs/screenshots/profile-section.png)
 
-**Галерея (лайтбокс)** — полноэкранный просмотр всей истории: крупный аватар, счётчик «1 of N» и дата записи (UTC) сверху, панель действий снизу (скачивание, копия URL, удаление, меню «More») и лента всех сохранённых аватаров:
+**Галерея (лайтбокс)** — полноэкранный просмотр всей истории: крупный аватар, счётчик «1 of N» и дата записи (UTC) сверху, панель действий снизу (поставить как аватар профиля для своей истории, скачивание, копия URL, удаление, меню «More») и лента всех сохранённых аватаров:
 
 ![Лайтбокс](docs/screenshots/lightbox.png)
 
@@ -125,6 +135,8 @@ GPL-3.0-or-later — see `LICENSE`.
 | --------- | ------------ | -------- |
 | trackSelf | ✔ | Отслеживать свой аватар |
 | trackFriends | ✘ | Автоотслеживание аватаров всех друзей |
+| pollTracked | ✔ | Периодически перепроверять аватарки отслеживаемых в фоне |
+| pollIntervalMinutes | 10 | Как часто (в минутах) перепроверять аватарки отслеживаемых |
 
 ## Установка
 

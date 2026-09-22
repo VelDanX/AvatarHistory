@@ -4,17 +4,19 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-import { CloudDownloadIcon, CopyIcon, MainSettingsIcon, TrashIcon } from "@components/Icons";
+import { CloudDownloadIcon, CopyIcon, MainSettingsIcon, PencilSparkleIcon, TrashIcon } from "@components/Icons";
 import { classNameFactory } from "@utils/css";
 import { copyWithToast } from "@utils/discord";
 import { useAwaiter } from "@utils/react";
 import { saveFile } from "@utils/web";
-import { RenderModalProps } from "@vencord/discord-types";
+import { RenderModalProps, User } from "@vencord/discord-types";
 import {
     ContextMenuApi,
+    FluxDispatcher,
     Menu,
     moment,
     openModal,
+    RestAPI,
     showToast,
     Toasts,
     useCallback,
@@ -27,6 +29,7 @@ import {
 
 import {
     AvatarRecord,
+    avatarToDataUrl,
     buildAvatarUrl,
     clearUserHistory,
     exportHistory,
@@ -43,6 +46,8 @@ import {
 
 const cl = classNameFactory("vc-avh-");
 const SWIPE_THRESHOLD = 48;
+/** How far (px) from the horizontal center the click-to-flip zones start; the middle stays "safe". */
+const CLICK_ZONE_MARGIN = 180;
 
 function ArrowWithTail({ dir }: { dir: "left" | "right" }) {
     return (
@@ -144,6 +149,8 @@ function AvatarLightbox({ userId, initialIndex, modalProps }: { userId: string; 
 
     const [confirmDelete, setConfirmDelete] = useState(false);
     const [confirmClear, setConfirmClear] = useState(false);
+    const [confirmSet, setConfirmSet] = useState(false);
+    const [setting, setSetting] = useState(false);
     const railRef = useRef<HTMLDivElement | null>(null);
     const activeRef = useRef<HTMLImageElement | null>(null);
     const keySinkRef = useRef<HTMLDivElement | null>(null);
@@ -201,11 +208,11 @@ function AvatarLightbox({ userId, initialIndex, modalProps }: { userId: string; 
             const h = window.innerHeight;
             if (clientY < h * 0.2 || clientY > h - 190) return;
             const half = w / 2;
-            if (clientX < half - 60) {
+            if (clientX < half - CLICK_ZONE_MARGIN) {
                 e.preventDefault();
                 e.stopPropagation();
                 go(-1);
-            } else if (clientX > half + 60) {
+            } else if (clientX > half + CLICK_ZONE_MARGIN) {
                 e.preventDefault();
                 e.stopPropagation();
                 go(1);
@@ -277,6 +284,36 @@ function AvatarLightbox({ userId, initialIndex, modalProps }: { userId: string; 
         force();
     };
 
+    const isSelf = userId === UserStore.getCurrentUser().id;
+
+    const applyAvatar = async (): Promise<void> => {
+        const r = recRef.current;
+        if (!r || setting) return;
+        setSetting(true);
+        setConfirmSet(false);
+        try {
+            const dataUrl = await avatarToDataUrl(userId, r);
+            if (!dataUrl) {
+                showToast("Could not load the avatar image", Toasts.Type.FAILURE);
+                return;
+            }
+            const res = await RestAPI.patch({ url: "/users/@me", body: { avatar: dataUrl } });
+            const self = (res as { body?: User })?.body;
+            if (self?.id) FluxDispatcher.dispatch({ type: "CURRENT_USER_UPDATE", user: self });
+            showToast("Avatar updated", Toasts.Type.SUCCESS);
+        } catch (err) {
+            const e = err as { body?: { message?: string }; };
+            const message = e?.body?.message;
+            if (r.format === "gif" || /nitro|premium/i.test(message ?? "")) {
+                showToast("Animated avatars require Nitro", Toasts.Type.FAILURE);
+            } else {
+                showToast("Failed to set avatar", Toasts.Type.FAILURE);
+            }
+        } finally {
+            setSetting(false);
+        }
+    };
+
     const [fileInput, setFileInput] = useState<HTMLInputElement | null>(null);
     const [importing, setImporting] = useState(false);
     const onImportFile = async (e: React.FormEvent<HTMLInputElement>): Promise<void> => {
@@ -335,6 +372,7 @@ function AvatarLightbox({ userId, initialIndex, modalProps }: { userId: string; 
         e.stopPropagation();
         ContextMenuApi.openContextMenu(e, () => (
             <Menu.Menu navId="vc-avh-lb-img-menu" className={cl("lb-menu")} onClose={ContextMenuApi.closeContextMenu} aria-label="Avatar options">
+                {isSelf && <Menu.MenuItem id="set-avatar" label="Set as avatar" action={() => setConfirmSet(true)} />}
                 <Menu.MenuItem id="download" label={rec.hasBlob ? "Download (offline copy saved)" : "Download"} action={() => void downloadAvatar(userId, rec)} />
                 <Menu.MenuItem id="copy-url" label="Copy URL" action={() => void copyWithToast(cdnUrl, "Avatar URL copied")} />
                 <Menu.MenuItem id="delete" label="Delete" color="danger" action={() => setConfirmDelete(true)} />
@@ -431,6 +469,16 @@ function AvatarLightbox({ userId, initialIndex, modalProps }: { userId: string; 
             </div>
 
             <div className={cl("lb-toolbar")}>
+                {isSelf && (
+                    <IconButton
+                        tooltip="Set as avatar"
+                        className={cl("lb-btn")}
+                        disabled={setting}
+                        onClick={() => setConfirmSet(true)}
+                    >
+                        <PencilSparkleIcon width={24} height={24} />
+                    </IconButton>
+                )}
                 <IconButton
                     tooltip={rec.hasBlob ? "Download (offline copy saved)" : "Download"}
                     className={cl("lb-btn", rec.hasBlob && "has-blob")}
@@ -496,6 +544,23 @@ function AvatarLightbox({ userId, initialIndex, modalProps }: { userId: string; 
                 </div>
             )}
 
+            {confirmSet && (
+                <div className={cl("lb-confirm")}>
+                    <span className={cl("lb-confirm-text", "muted")}>Set this avatar on your Discord profile?</span>
+                    <button
+                        type="button"
+                        className={cl("lb-confirm-btn", "ok")}
+                        disabled={setting}
+                        onClick={() => void applyAvatar()}
+                    >
+                        {setting ? "Setting…" : "Set avatar"}
+                    </button>
+                    <button type="button" className={cl("lb-confirm-btn")} disabled={setting} onClick={() => setConfirmSet(false)}>
+                        Cancel
+                    </button>
+                </div>
+            )}
+
             <div className={cl("lb-rail")} ref={railRef}>
                 {recs.map((r, i) => (
                     <img
@@ -511,6 +576,20 @@ function AvatarLightbox({ userId, initialIndex, modalProps }: { userId: string; 
                     />
                 ))}
             </div>
+
+            {setting && (
+                <div className={cl("lb-progress-backdrop")}>
+                    <div className={cl("lb-progress")}>
+                        <div className={cl("lb-progress-label")}>
+                            <span className={cl("lb-progress-spinner")} />
+                            Setting avatar…
+                        </div>
+                        <div className={cl("lb-progress-bar")}>
+                            <div className={cl("lb-progress-bar-fill")} />
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

@@ -263,6 +263,54 @@ export function blobToDataUrl(blob: Blob): Promise<string> {
     });
 }
 
+/**
+ * Turns an archived avatar record into a data URL suitable for `PATCH /users/@me`
+ * (i.e. for "Set as avatar"). Prefers the offline blob, falls back to the CDN.
+ * The image is uploaded at its full stored size — no downscaling. WebP is
+ * transcoded to PNG only because Discord does not accept WebP avatars.
+ */
+export async function avatarToDataUrl(userId: string, rec: AvatarRecord): Promise<string | null> {
+    let blob = await fetchAvatarBlob(userId, rec);
+    if (!blob) {
+        try {
+            const res = await fetch(buildAvatarUrl(userId, rec.hash, rec.format, 512, rec.avatarId), { credentials: "omit" });
+            if (!res.ok) return null;
+            blob = await res.blob();
+        } catch {
+            return null;
+        }
+    }
+    if (blob.type === "image/webp") {
+        return blobToPngDataUrl(blob);
+    }
+    return blobToDataUrl(blob);
+}
+
+function blobToPngDataUrl(blob: Blob): Promise<string | null> {
+    return new Promise(resolve => {
+        const url = URL.createObjectURL(blob);
+        const img = new Image();
+        img.onload = () => {
+            const canvas = document.createElement("canvas");
+            canvas.width = img.naturalWidth;
+            canvas.height = img.naturalHeight;
+            const ctx = canvas.getContext("2d");
+            URL.revokeObjectURL(url);
+            if (!ctx) {
+                resolve(null);
+                return;
+            }
+            ctx.drawImage(img, 0, 0);
+            resolve(canvas.toDataURL("image/png"));
+        };
+        img.onerror = () => {
+            URL.revokeObjectURL(url);
+            resolve(null);
+        };
+        img.src = url;
+    });
+}
+
 const IMPORT_HASH_RE = /^(a_)?[0-9a-f]{32}$/i;
 const VALID_FORMATS: ReadonlySet<string> = new Set(["png", "gif", "webp"]);
 
