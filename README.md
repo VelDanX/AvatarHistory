@@ -9,7 +9,7 @@ Vencord / Equicord userplugin that passively records avatar changes and lets you
 - Tracks your own avatar changes (toggle in settings)
 - Track any user via right-click → "Track avatar changes"
 - Optionally auto-track all your friends (toggle in settings)
-- Background tracking: avatars of tracked users are re-checked periodically — no need to open their profile
+- Background tracking: avatars of tracked users are re-checked periodically
 - Polite to the API: background checks are paced, capped per interval and back off automatically on rate limits
 - Instant capture: any rendered avatar of a tracked user (member list, DMs, messages...) is recorded on the spot
 - Syncs the last 6 avatars that Discord keeps server-side
@@ -40,8 +40,8 @@ Vencord / Equicord userplugin that passively records avatar changes and lets you
 | ------- | ------- | ----------- |
 | trackSelf | ✔ | Track your own avatar changes |
 | trackFriends | ✘ | Auto-track avatar changes of all your friends |
-| pollTracked | ✔ | Periodically re-check tracked users' avatars in the background |
-| pollIntervalMinutes | 10 | How often (minutes) tracked users' avatars are re-checked |
+| pollTracked | ✔ | Periodically re-check tracked users' avatars in the background. If disabled, avatars of other tracked users only update when you view their profile |
+| pollIntervalSeconds | auto (30 s – 30 min) | Re-check interval (s); auto-tunes to the number of tracked users until you set your own value |
 
 ## Installation
 
@@ -104,7 +104,7 @@ GPL-3.0-or-later — see `LICENSE`.
 - Автоотслеживание смены своего аватара (тогл в настройках)
 - Отслеживание любого пользователя через ПКМ → «Track avatar changes»
 - Опциональное автоотслеживание всех друзей (тогл «Track friends»)
-- Фоновое отслеживание: аватарки отслеживаемых юзеров периодически перепроверяются — профиль открывать не нужно
+- Фоновое отслеживание: аватарки отслеживаемых юзеров периодически перепроверяются
 - Бережно к API: фоновые проверки идут с паузами, ограничены за интервал и сами отступают при рейт-лимитах
 - Мгновенный захват: любая отрисованная аватарка отслеживаемого юзера (список участников, DM, сообщения...) попадает в историю сразу
 - Синхронизация последних 6 аватаров с сервера Discord
@@ -135,8 +135,8 @@ GPL-3.0-or-later — see `LICENSE`.
 | --------- | ------------ | -------- |
 | trackSelf | ✔ | Отслеживать свой аватар |
 | trackFriends | ✘ | Автоотслеживание аватаров всех друзей |
-| pollTracked | ✔ | Периодически перепроверять аватарки отслеживаемых в фоне |
-| pollIntervalMinutes | 10 | Как часто (в минутах) перепроверять аватарки отслеживаемых |
+| pollTracked | ✔ | Периодически перепроверять аватарки отслеживаемых в фоне. Если выключено — аватарки других отслеживаемых обновляются только при просмотре их профиля |
+| pollIntervalSeconds | авто (30 с – 30 мин) | Интервал перепроверки (с); авто-подстройка под число отслеживаемых, пока не задано своё значение |
 
 ## Установка
 
