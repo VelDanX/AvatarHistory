@@ -4,6 +4,170 @@
     gap: 8px;
 }
 
+.vc-avh-tracked-overview {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    width: 100%;
+}
+
+.vc-avh-tracked-overview-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.vc-avh-tracked-overview-title {
+    font-size: 15px;
+    font-weight: 600;
+}
+
+.vc-avh-tracked-overview-count {
+    min-width: 22px;
+    padding: 1px 7px;
+    border-radius: 999px;
+    background: var(--background-modifier-active);
+    color: var(--text-muted);
+    font-size: 12px;
+    font-weight: 600;
+    text-align: center;
+}
+
+.vc-avh-tracked-overview-empty {
+    color: var(--text-muted);
+    font-size: 13px;
+    font-style: italic;
+}
+
+.vc-avh-tracked-overview-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    max-height: 260px;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: var(--scrollbar-thin-thumb) transparent;
+}
+
+.vc-avh-tracked-overview-list::-webkit-scrollbar {
+    width: 6px;
+}
+
+.vc-avh-tracked-overview-list::-webkit-scrollbar-thumb {
+    background-color: var(--scrollbar-thin-thumb);
+    border-radius: 3px;
+}
+
+.vc-avh-tracked-overview-list::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.vc-avh-tracked-overview-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 6px;
+    border-radius: 8px;
+}
+
+.vc-avh-tracked-overview-row:hover {
+    background: var(--background-modifier-hover);
+}
+
+.vc-avh-tracked-overview-avatar {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    flex: 0 0 auto;
+    object-fit: cover;
+    background: var(--background-primary);
+}
+
+.vc-avh-tracked-overview-main {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    overflow: hidden;
+}
+
+.vc-avh-tracked-overview-name {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 13px;
+}
+
+.vc-avh-tracked-overview-id {
+    align-self: flex-start;
+    max-width: 100%;
+    padding: 1px 6px;
+    border: none;
+    border-radius: 6px;
+    background: var(--background-modifier-active);
+    color: var(--text-muted);
+    font-size: 11px;
+    font-family: var(--font-code);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: color 0.15s ease, background 0.15s ease;
+}
+
+.vc-avh-tracked-overview-id:hover {
+    color: var(--text-normal);
+    background: var(--background-modifier-hover);
+}
+
+.vc-avh-tracked-overview-remove {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    padding: 0;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: color 0.15s ease, background 0.15s ease;
+}
+
+.vc-avh-tracked-overview-remove:hover {
+    color: var(--status-danger);
+    background: rgb(237 66 69 / 0.15);
+}
+
+.vc-avh-tracked-overview-source {
+    flex: 0 0 auto;
+    padding: 1px 7px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+
+.vc-avh-tracked-overview-source-you {
+    background: rgb(88 101 242 / 20%);
+    color: #a5b0ff;
+}
+
+.vc-avh-tracked-overview-source-friend {
+    background: rgb(59 165 92 / 18%);
+    color: #65bd82;
+}
+
+.vc-avh-tracked-overview-source-manual {
+    background: rgb(250 166 26 / 16%);
+    color: #faa61a;
+}
+
 .vc-avh-profile-header {
     display: flex;
     align-items: center;
@@ -433,7 +597,6 @@
     color: var(--white-500) !important;
 }
 
-/* Set-avatar progress overlay */
 .vc-avh-lb-progress-backdrop {
     position: absolute;
     inset: 0;

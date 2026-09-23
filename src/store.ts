@@ -47,6 +47,7 @@ export async function setTracked(userId: string, on: boolean): Promise<void> {
     if (on) trackedUsers.add(userId);
     else trackedUsers.delete(userId);
     await persistTrackedSet();
+    notifyTrackedListeners();
 }
 
 export async function getTrackedUsers(): Promise<string[]> {
@@ -63,6 +64,7 @@ export async function loadStore(): Promise<void> {
     }
     if (t) for (const userId of t) if (userId) trackedUsers.add(userId);
     notifyListeners();
+    notifyTrackedListeners();
 }
 
 export async function persistHistory(): Promise<void> {
@@ -176,6 +178,19 @@ export function subscribeHistory(listener: () => void): () => void {
     };
 }
 
+const trackedListeners = new Set<() => void>();
+
+function notifyTrackedListeners(): void {
+    for (const listener of trackedListeners) listener();
+}
+
+export function subscribeTracked(listener: () => void): () => void {
+    trackedListeners.add(listener);
+    return () => {
+        trackedListeners.delete(listener);
+    };
+}
+
 export async function recordAvatarSeen(userId: string, rec: AvatarRecord): Promise<void> {
     const recs = getHistory(userId);
     const existing = recs.find(r => r.hash === rec.hash);
@@ -233,6 +248,7 @@ export async function resetAllHistory(): Promise<void> {
     trackedUsers.clear();
     await set(TRACKED_KEY, []);
     await persistHistory();
+    notifyTrackedListeners();
     notifyListeners();
 }
 
@@ -263,12 +279,6 @@ export function blobToDataUrl(blob: Blob): Promise<string> {
     });
 }
 
-/**
- * Turns an archived avatar record into a data URL suitable for `PATCH /users/@me`
- * (i.e. for "Set as avatar"). Prefers the offline blob, falls back to the CDN.
- * The image is uploaded at its full stored size — no downscaling. WebP is
- * transcoded to PNG only because Discord does not accept WebP avatars.
- */
 export async function avatarToDataUrl(userId: string, rec: AvatarRecord): Promise<string | null> {
     let blob = await fetchAvatarBlob(userId, rec);
     if (!blob) {

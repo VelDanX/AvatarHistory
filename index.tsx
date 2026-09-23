@@ -8,11 +8,14 @@ import "./src/style.css";
 
 import { NavContextMenuPatchCallback } from "@api/ContextMenu";
 import { addProfileSection, removeProfileSection } from "@api/ProfileSections";
-import { PlainSettings, Settings, SettingsStore, definePluginSettings } from "@api/Settings";
+import { definePluginSettings, PlainSettings, SettingsStore, useSettings } from "@api/Settings";
+import { TrashIcon, CopyIcon } from "@components/Icons";
+import { classNameFactory } from "@utils/css";
+import { copyWithToast } from "@utils/discord";
 import { Logger } from "@utils/Logger";
 import definePlugin, { OptionType } from "@utils/types";
 import { User } from "@vencord/discord-types";
-import { Constants, FluxDispatcher, Menu, RelationshipStore, RestAPI, Toasts, UserStore } from "@webpack/common";
+import { Constants, FluxDispatcher, IconUtils, Menu, RelationshipStore, RestAPI, Toasts, useEffect, useReducer, UserStore } from "@webpack/common";
 
 import { AvatarHistoryProfileSection } from "./ProfileSection";
 import { BackgroundSync, DEFAULT_STAGGER_MS } from "./src/bgSync";
@@ -28,19 +31,22 @@ import {
     recordAvatarSeen,
     resetAllHistory,
     setTracked,
+    subscribeTracked,
     trackedUsers
 } from "./src/store";
 
 const log = new Logger("AvatarHistory");
 
+const cl = classNameFactory("vc-avh-");
+
 const GAP_FILL_STAGGER_MS = 300;
-/** Old (minutes) default for pollIntervalMinutes — only used during migration. */
+
 const DEFAULT_POLL_INTERVAL_MINUTES = 10;
-/** Fallback poll interval (seconds) when auto-tuning is unavailable. */
+
 const DEFAULT_POLL_INTERVAL_SECONDS = 30;
-/** Auto-tuning range for the background poll interval. */
-const MIN_POLL_INTERVAL_MS = 30_000;      // 30 s — the poll floor
-const MAX_POLL_INTERVAL_MS = 30 * 60_000; // 30 min — the poll ceiling
+
+const MIN_POLL_INTERVAL_MS = 30_000;
+const MAX_POLL_INTERVAL_MS = 30 * 60_000;
 
 let backgroundSync: BackgroundSync | null = null;
 
@@ -71,6 +77,10 @@ async function resetAndResync(): Promise<void> {
 }
 
 const settings = definePluginSettings({
+    trackedOverview: {
+        type: OptionType.COMPONENT,
+        component: () => <TrackedUsersOverview />,
+    },
     trackSelf: {
         type: OptionType.BOOLEAN,
         default: true,
@@ -86,38 +96,55 @@ const settings = definePluginSettings({
         default: true,
         description: "Periodically re-check tracked users' avatars in the background. If disabled, avatars of other tracked users only update when you view their profile",
     },
+    pollIntervalMode: {
+        type: OptionType.SELECT,
+        options: [
+            { label: "Auto", value: "auto", default: true },
+            { label: "Manual", value: "manual" },
+        ],
+        description: "How the background re-check interval is chosen. Auto (default) tunes it to the number of tracked users (30 s – 30 min); Manual lets you set a fixed interval",
+        onChange(value) {
+            if (value === "manual") {
+                const stored = PlainSettings.plugins.AvatarHistory as Record<string, unknown> | undefined;
+                const current = typeof stored?.pollIntervalSeconds === "number" && stored.pollIntervalSeconds > 0
+                    ? stored.pollIntervalSeconds
+                    : DEFAULT_POLL_INTERVAL_SECONDS;
+                settings.store.pollIntervalSeconds = current;
+            }
+        },
+    },
     pollIntervalSeconds: {
         type: OptionType.NUMBER,
         default: 30,
-        description: "How often (in seconds) tracked users' avatars are re-checked in the background. Auto-tuned to the number of tracked users (30 s – 30 min) unless you set your own value",
-        onChange() {
-            // A manual change disables auto-tuning.
-            settings.store.pollIntervalAuto = false;
-        },
-    },
-    pollIntervalAuto: {
-        type: OptionType.BOOLEAN,
-        default: true,
-        hidden: true,
-        description: "Auto-tune pollIntervalSeconds to the number of tracked users",
+        description: "How often (in seconds) tracked users' avatars are re-checked in the background",
+        hidden: () => settings.store.pollIntervalMode !== "manual",
     },
 });
 
-/** Migrates the pre-0.0.3 `pollIntervalMinutes` setting (minutes) to seconds. */
 function migratePollIntervalSetting(): void {
     const stored = SettingsStore.plain.plugins.AvatarHistory as Record<string, unknown> | undefined;
     if (!stored) return;
-    if (!Object.hasOwn(stored, "pollIntervalMinutes") || Object.hasOwn(stored, "pollIntervalSeconds")) return;
-    const minutes = stored.pollIntervalMinutes;
-    if (typeof minutes === "number" && minutes > 0) {
-        // A value other than the built-in default was a deliberate choice:
-        // keep it manual, converted to seconds.
-        stored.pollIntervalSeconds = minutes * 60;
-        if (minutes !== DEFAULT_POLL_INTERVAL_MINUTES) {
-            stored.pollIntervalAuto = false;
+
+    if (Object.hasOwn(stored, "pollIntervalMinutes")) {
+        if (!Object.hasOwn(stored, "pollIntervalSeconds")) {
+            const minutes = stored.pollIntervalMinutes;
+            if (typeof minutes === "number" && minutes > 0) {
+                stored.pollIntervalSeconds = minutes * 60;
+                if (minutes !== DEFAULT_POLL_INTERVAL_MINUTES) {
+                    stored.pollIntervalMode = "manual";
+                }
+            }
         }
+        delete stored.pollIntervalMinutes;
     }
-    delete stored.pollIntervalMinutes;
+
+    if (Object.hasOwn(stored, "pollIntervalAuto") && typeof stored.pollIntervalMode !== "string") {
+        if (stored.pollIntervalAuto === false) {
+            stored.pollIntervalMode = "manual";
+        }
+        delete stored.pollIntervalAuto;
+    }
+
     SettingsStore.markAsChanged();
 }
 
@@ -166,11 +193,6 @@ function isAnyTrackingActive(): boolean {
     return settings.store.trackSelf || settings.store.trackFriends || trackedUsers.size > 0;
 }
 
-/**
- * The users the background sync actually re-checks right now:
- * friends (when trackFriends is on) + manually tracked users, excluding self
- * (self is handled separately via the recent-avatars endpoint).
- */
 function sweepTargetIds(): string[] {
     const ids = new Set<string>();
     if (settings.store.trackFriends) {
@@ -187,55 +209,128 @@ async function getSweepIds(): Promise<string[]> {
     return sweepTargetIds();
 }
 
-/** How many users the background sync would actually re-check right now. */
 function sweepUserCount(): number {
     return sweepTargetIds().length;
 }
 
-/**
- * Smart default poll interval: scale with the number of tracked users so the
- * whole list gets one full paced pass per interval, but stay within a sane
- * range (never more aggressive than every 30 seconds, never lazier than every
- * 30 minutes). Only used when the user hasn't disabled auto-tuning.
- */
 function smartPollIntervalMs(): number {
     const pacedMs = Math.max(1, sweepUserCount()) * DEFAULT_STAGGER_MS;
     return Math.min(MAX_POLL_INTERVAL_MS, Math.max(MIN_POLL_INTERVAL_MS, pacedMs));
 }
 
-/**
- * Interval actually used for background checks.
- *
- * Auto mode (default): tune to the number of tracked users and write the
- * chosen value back into the settings so the UI shows what's really used
- * instead of a stale default. The tuning stays live until the user
- * deliberately changes pollIntervalSeconds (which flips pollIntervalAuto off).
- *
- * Called on every background cycle, so the cadence adapts when the number of
- * tracked users changes (friends added/removed, users tracked manually).
- */
 function resolvePollIntervalMs(): number {
     const stored = PlainSettings.plugins.AvatarHistory as Record<string, unknown> | undefined;
     const custom = typeof stored?.pollIntervalSeconds === "number" ? stored.pollIntervalSeconds : null;
-    const auto = stored?.pollIntervalAuto !== false;
+    const mode = stored?.pollIntervalMode;
 
-    if (!auto) {
-        // User picked an explicit interval: respect it.
+    if (mode === "manual") {
         return (custom != null && custom > 0 ? custom : DEFAULT_POLL_INTERVAL_SECONDS) * 1000;
     }
 
-    // Auto: tune to the number of tracked users and surface the chosen value
-    // in the settings UI.
     const seconds = Math.max(1, Math.round(smartPollIntervalMs() / 1000));
     settings.store.pollIntervalSeconds = seconds;
     return seconds * 1000;
+}
+
+function TrackedUsersOverview() {
+    useSettings(["plugins.AvatarHistory.*"]);
+    const [, force] = useReducer(x => x + 1, 0);
+
+    useEffect(() => {
+        const unsubTracked = subscribeTracked(force);
+        const unsubFlux = (["RELATIONSHIP_ADD", "RELATIONSHIP_REMOVE", "RELATIONSHIP_UPDATE"] as const).map(ev => {
+            const cb = () => force();
+            FluxDispatcher.subscribe(ev, cb);
+            return () => FluxDispatcher.unsubscribe(ev, cb);
+        });
+        return () => {
+            unsubTracked();
+            for (const unsub of unsubFlux) unsub();
+        };
+    }, []);
+
+    const self = UserStore.getCurrentUser();
+    const ids = sweepTargetIds();
+    if (self && settings.store.trackSelf) ids.push(self.id);
+
+    const entries = [...new Set(ids)].map(id => {
+        const user = UserStore.getUser(id);
+        const source = self && id === self.id
+            ? "self"
+            : settings.store.trackFriends && RelationshipStore.isFriend(id)
+                ? "friend"
+                : "manual";
+        return {
+            id,
+            user,
+            source,
+            name: user?.globalName ?? user?.username ?? "Unknown user",
+            isSelf: source === "self",
+            isFriend: source === "friend",
+            isManual: source === "manual",
+        };
+    }).sort((a, b) => a.name.localeCompare(b.name));
+
+    return (
+        <div className={cl("tracked-overview")}>
+            <div className={cl("tracked-overview-header")}>
+                <span className={cl("tracked-overview-title")}>Tracked users</span>
+                <span className={cl("tracked-overview-count")}>{entries.length}</span>
+            </div>
+            {entries.length === 0 ? (
+                <div className={cl("tracked-overview-empty")}>
+                    Nothing tracked yet — enable a toggle above or use right-click → "Track avatar changes".
+                </div>
+            ) : (
+                <div className={cl("tracked-overview-list")}>
+                    {entries.map(entry => (
+                        <div className={cl("tracked-overview-row")} key={entry.id}>
+                            <img
+                                className={cl("tracked-overview-avatar")}
+                                src={entry.user
+                                    ? entry.user.getAvatarURL(void 0, 64, true)
+                                    : IconUtils.getDefaultAvatarURL(entry.id)}
+                                alt=""
+                            />
+                            <div className={cl("tracked-overview-main")}>
+                                <span className={cl("tracked-overview-name")}>{entry.name}</span>
+                                <button
+                                    type="button"
+                                    className={cl("tracked-overview-id")}
+                                    onClick={() => copyWithToast(entry.id, "User ID copied")}
+                                    title="Copy User ID"
+                                >
+                                    <CopyIcon width={11} height={11} />
+                                    {entry.id}
+                                </button>
+                            </div>
+                            <span className={cl(`tracked-overview-source tracked-overview-source-${entry.source}`)}>
+                                {entry.isSelf ? "you" : entry.isFriend ? "friend" : "manual"}
+                            </span>
+                            {entry.isManual && (
+                                <button
+                                    type="button"
+                                    className={cl("tracked-overview-remove")}
+                                    onClick={() => void setTracked(entry.id, false)}
+                                    title="Remove from tracking"
+                                    aria-label="Remove from tracking"
+                                >
+                                    <TrashIcon width={14} height={14} />
+                                </button>
+                            )}
+                        </div>
+                    ))}
+                </div>
+            )}
+        </div>
+    );
 }
 
 async function checkUserOnServer(userId: string): Promise<void> {
     if (!shouldTrack(userId)) return;
     try {
         const res: any = await RestAPI.get({ url: Constants.Endpoints.USER(userId), retries: 2 });
-        // If the API layer surfaces a rate limit instead of retrying internally.
+
         if (res?.status === 429) {
             const waitSeconds = Math.min(Number(res?.body?.retry_after ?? 5), 30);
             log.info(`Rate limited, pausing background checks for ${waitSeconds}s`);
@@ -244,21 +339,16 @@ async function checkUserOnServer(userId: string): Promise<void> {
         }
         const user = res?.body ?? res;
         if (!user || user.id !== userId || typeof user.avatar !== "string") return;
-        // Unchanged avatar: nothing to record, avoid dispatching USER_UPDATE.
+
         const newest = getHistory(userId)[0];
         if (newest && newest.hash === user.avatar) return;
-        // Dispatching updates Discord's own stores, which then triggers our
-        // USER_UPDATE handler and records the avatar (deduplicated).
+
         FluxDispatcher.dispatch({ type: "USER_UPDATE", user });
     } catch (e) {
         log.warn(`Background avatar check failed for ${userId}`, e);
     }
 }
 
-/**
- * Records the avatar of a tracked user if it differs from the latest history
- * entry. Shared by the USER_UPDATE / PRESENCE_UPDATES flux streams.
- */
 function recordUserIfChanged(user?: Partial<User>): void {
     if (!user || typeof user.id !== "string" || typeof user.avatar !== "string") return;
     if (!shouldTrack(user.id)) return;

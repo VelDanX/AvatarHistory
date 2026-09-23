@@ -81,8 +81,7 @@ async function recordHash(userId: string, hash: string, avatarId?: string): Prom
     const formats: Array<"png" | "gif" | "webp"> = rec.format === "gif" ? ["gif", "webp"] : ["png", "webp", "gif"];
     if (!(await checkCdnExists(userId, rec.hash, formats, avatarId))) {
         log.info(`Skipped avatar ${rec.hash}: not a valid CDN image for ${userId}`);
-        // Don't keep the key in `seen`: the CDN may simply not have propagated
-        // the brand-new avatar yet. Let a later render/sweep re-check it.
+
         seen.delete(key);
         return;
     }
@@ -100,12 +99,6 @@ function parseRecentList(body: unknown): Array<{ avatarId?: string; hash: string
         out.push({ avatarId, hash });
     };
 
-    // Documented shape: `{ avatars: [{ id, storage_hash, ... }] }`; a plain
-    // array of entries is accepted as well. Only `storage_hash` is
-    // authoritative. The old implementation greedily collected ANY string that
-    // looked like a 32-hex hash anywhere in the response, which for the current
-    // avatar could yield two hashes of the same picture (the canonical and a
-    // smaller spec variant) and duplicate history entries after every restart.
     const list: unknown[] | null = Array.isArray(body)
         ? body
         : body && typeof body === "object" && Array.isArray((body as { avatars?: unknown }).avatars)
@@ -124,8 +117,6 @@ function parseRecentList(body: unknown): Array<{ avatarId?: string; hash: string
         return out;
     }
 
-    // Unknown shape (defensive): still only trust `storage_hash` values, never
-    // bare strings, so a future schema change can't reintroduce duplicates.
     const walk = (v: unknown): void => {
         if (!v || typeof v !== "object") return;
         if (Array.isArray(v)) {
@@ -152,11 +143,7 @@ export async function pullRecentFromServer(): Promise<number> {
         const body = data?.body ?? data;
         const recents = parseRecentList(body);
         const recs = getHistory(userId);
-        // The newest archive entry is the current avatar. If it carries a
-        // different hash than the live avatar (Discord serves the current
-        // avatar under a canonical and a smaller spec hash) and the live one is
-        // already recorded, the archived variant is just a twin of the current
-        // avatar — don't add it as a second, visually identical entry.
+
         const liveHash = UserStore.getCurrentUser()?.avatar?.toLowerCase() ?? null;
         for (let i = 0; i < recents.length; i++) {
             const { hash, avatarId } = recents[i];
@@ -177,10 +164,6 @@ const BG_URL_RE = /url\(\s*['"]?([^'")]+)['"]?\s*\)/g;
 
 const pendingCdnChecks = new Map<string, Promise<boolean>>();
 
-/**
- * Like `cdnAvatarExists`, but dedupes concurrent checks for the same avatar,
- * so a hash that shows up in several places at once only hits the CDN once.
- */
 export async function checkCdnExists(userId: string, hash: string, formats: Array<"png" | "gif" | "webp">, avatarId?: string): Promise<boolean> {
     const key = `${userId}:${hash}:${avatarId ?? ""}`;
     const existing = pendingCdnChecks.get(key);
@@ -232,8 +215,7 @@ function installObserver(): void {
     if (observer) return;
     observer = new MutationObserver(muts => {
         for (const mut of muts) {
-            // Catch in-place avatar swaps (e.g. Discord changing <img src> of
-            // an already-mounted element on an avatar update).
+
             if (mut.type === "attributes") {
                 scheduleHandle(mut.target);
                 continue;

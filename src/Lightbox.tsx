@@ -46,7 +46,7 @@ import {
 
 const cl = classNameFactory("vc-avh-");
 const SWIPE_THRESHOLD = 48;
-/** How far (px) from the horizontal center the click-to-flip zones start; the middle stays "safe". */
+
 const CLICK_ZONE_MARGIN = 180;
 
 function ArrowWithTail({ dir }: { dir: "left" | "right" }) {

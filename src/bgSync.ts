@@ -8,9 +8,8 @@ import { Logger } from "@utils/Logger";
 
 const log = new Logger("AvatarHistory");
 
-/** Minimum gap between two API requests during a sweep. */
 export const DEFAULT_STAGGER_MS = 1500;
-/** How many users the startup pass verifies right away. */
+
 const QUICK_START_COUNT = 30;
 const QUICK_START_STAGGER_MS = 300;
 
@@ -18,24 +17,6 @@ function sleep(ms: number): Promise<void> {
     return new Promise(r => setTimeout(r, ms));
 }
 
-/**
- * Periodically re-checks tracked users' avatars against Discord in the
- * background, so avatar changes are recorded even when the user's profile
- * is never opened.
- *
- * Deliberately gentle to the API:
- * - requests are paced (never faster than `staggerMs` apart),
- * - a sweep processes at most one interval's worth of users and rotates
- *   through very large lists,
- * - after a failure (e.g. a rate limit) the sweep backs off.
- *
- * The interval is *not* frozen at startup: `getIntervalMs` is re-evaluated
- * before every cycle, so the poll cadence adapts when the number of tracked
- * users changes (friends added/removed, users tracked manually).
- *
- * A small quick pass runs shortly after startup so results appear fast,
- * while the full rotation stays slow and polite.
- */
 export class BackgroundSync {
     private timer: number | null = null;
     private sweeping = false;
@@ -53,8 +34,7 @@ export class BackgroundSync {
     public start(): void {
         if (this.timer != null) return;
         this.scheduleNext();
-        // Quick first pass: verify a handful of users right after startup so
-        // changes made while the client was closed show up promptly.
+
         this.ready.then(() => {
             if (this.stopped) return;
             setTimeout(() => void this.sweep(QUICK_START_COUNT, QUICK_START_STAGGER_MS), 2000);
@@ -74,8 +54,7 @@ export class BackgroundSync {
     }
 
     private async sweep(sizeOverride?: number, staggerOverride?: number): Promise<void> {
-        // A swept is already in flight (it will schedule the next one), or
-        // we were stopped — either way nothing to do here.
+
         if (this.sweeping || this.stopped) return;
         const stagger = staggerOverride ?? this.staggerMs;
         this.sweeping = true;
@@ -85,8 +64,7 @@ export class BackgroundSync {
                 this.offset = 0;
                 return;
             }
-            // Cover the whole list within a single interval when possible,
-            // but never issue requests faster than one per `staggerMs`.
+
             const intervalMs = this.getIntervalMs();
             const cap = Math.max(100, Math.floor(intervalMs / this.staggerMs));
             const size = Math.min(sizeOverride ?? cap, ids.length);
