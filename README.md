@@ -30,9 +30,9 @@ Vencord / Equicord userplugin that passively records avatar changes and lets you
 
 ![Profile section](docs/screenshots/profile-section.png)
 
-**Lightbox** — fullscreen viewer over the whole history: large preview, a "1 of N" counter and the record timestamp (UTC) on top, an action bar at the bottom (set as profile avatar for your own history, download, copy URL, delete, "More" menu), and a rail of all saved avatars below:
+**Lightbox** — fullscreen viewer over the whole history: large preview, a "1 of N" counter and the record timestamp (UTC) on top, an action bar at the bottom (set as profile avatar, download, copy URL, delete, "More" menu), and a rail of all saved avatars below:
 
-![Lightbox](docs/screenshots/lightbox.png)
+![Lightbox](https://media.discordapp.net/attachments/1282733306856603771/1552164728749559828/image.png?ex=6ab49d8d&is=6ab34c0d&hm=8f5256f233fd7af244d5d874d37e06f33e9031328f9f68b3de7ab3ce6649344a&=&format=webp&quality=lossless)
 
 ## Settings
 
@@ -127,7 +127,7 @@ GPL-3.0-or-later — see `LICENSE`.
 
 **Галерея (лайтбокс)** — полноэкранный просмотр всей истории: крупный аватар, счётчик «1 of N» и дата записи (UTC) сверху, панель действий снизу (поставить как аватар профиля для своей истории, скачивание, копия URL, удаление, меню «More») и лента всех сохранённых аватаров:
 
-![Лайтбокс](docs/screenshots/lightbox.png)
+![Лайтбокс](https://media.discordapp.net/attachments/1282733306856603771/1552164728749559828/image.png?ex=6ab49d8d&is=6ab34c0d&hm=8f5256f233fd7af244d5d874d37e06f33e9031328f9f68b3de7ab3ce6649344a&=&format=webp&quality=lossless)
 
 ## Настройки
 
