@@ -22,6 +22,7 @@ export class BackgroundSync {
     private sweeping = false;
     private stopped = false;
     private offset = 0;
+    private pausedUntil = 0;
 
     constructor(
         private readonly ready: Promise<void>,
@@ -49,13 +50,19 @@ export class BackgroundSync {
         }
     }
 
+    /** Pause the whole sweep (e.g. after a 429) instead of sleeping inside the loop. */
+    public pause(durationMs: number): void {
+        this.pausedUntil = Date.now() + durationMs;
+        log.info(`Background sweep paused for ${Math.round(durationMs / 1000)}s`);
+    }
+
     private scheduleNext(): void {
         this.timer = window.setTimeout(() => void this.sweep(), this.getIntervalMs());
     }
 
     private async sweep(sizeOverride?: number, staggerOverride?: number): Promise<void> {
 
-        if (this.sweeping || this.stopped) return;
+        if (this.sweeping || this.stopped || Date.now() < this.pausedUntil) return;
         const stagger = staggerOverride ?? this.staggerMs;
         this.sweeping = true;
         try {

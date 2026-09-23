@@ -6,10 +6,10 @@
 
 import { RightArrow } from "@components/Icons";
 import { classNameFactory } from "@utils/css";
-import { useEffect, useReducer, useState } from "@webpack/common";
+import { useEffect, useState } from "@webpack/common";
 
-import { openAvatarLightbox } from "./src/Lightbox";
-import { AvatarRecord, buildAvatarUrl, getBlobObjectUrl, getHistory, subscribeHistory } from "./src/store";
+import { AvatarRecord, buildAvatarUrl, getBlobObjectUrl, useHistory } from "../store";
+import { openAvatarLightbox } from "./lightbox/Lightbox";
 
 const cl = classNameFactory("vc-avh-");
 const PREVIEW_COUNT = 4;
@@ -34,10 +34,7 @@ function ProfileThumb({ userId, rec, index }: { userId: string; rec: AvatarRecor
 }
 
 export function AvatarHistoryProfileSection({ userId }: { userId: string }) {
-    const [, force] = useReducer(x => x + 1, 0);
-    const recs = getHistory(userId);
-
-    useEffect(() => subscribeHistory(force), []);
+    const recs = useHistory(userId);
 
     if (!recs.length) return null;
 
