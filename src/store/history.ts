@@ -8,6 +8,10 @@ import { del, delMany, get, set } from "@api/DataStore";
 import { Logger } from "@utils/Logger";
 import { React } from "@webpack/common";
 
+// NOTE: intentional cycle history <-> blobs. Both modules only reference each
+// other's *function declarations* at runtime — nothing executes at module
+// evaluation time, so ESM handles this fine. Do not "fix" by inlining or
+// moving state; add a comment here instead if the cycle changes.
 import { revokeBlobObjectUrl } from "./blobs";
 import {
     AvatarHistory,

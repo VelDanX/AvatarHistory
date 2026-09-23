@@ -8,7 +8,7 @@ import { Logger } from "@utils/Logger";
 
 import { buildAvatarUrl } from "../cdnUrl";
 import { CDN_HEAD_TIMEOUT_MS } from "../config";
-import { getHistory, removeRecord } from "../store/history";
+import { getHistory, removeRecord } from "../store";
 
 const log = new Logger("AvatarHistory");
 

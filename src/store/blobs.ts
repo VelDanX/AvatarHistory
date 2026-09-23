@@ -9,6 +9,8 @@ import { Logger } from "@utils/Logger";
 
 import { buildAvatarUrl } from "../cdnUrl";
 import { BLOB_BUDGET_BYTES } from "../config";
+// NOTE: intentional cycle with ./history (see the mirrored note there).
+// Runtime-only usage of hoisted function declarations — safe under ESM.
 import { updateRecord } from "./history";
 import { AvatarRecord, blobKeyFor } from "./types";
 

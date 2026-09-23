@@ -95,12 +95,12 @@ export function sweepTargetIds(): string[] {
     return [...ids];
 }
 
-export async function getSweepIds(): Promise<string[]> {
+async function getSweepIds(): Promise<string[]> {
     if (!settings.store.pollTracked) return [];
     return sweepTargetIds();
 }
 
-export function sweepUserCount(): number {
+function sweepUserCount(): number {
     return sweepTargetIds().length;
 }
 
