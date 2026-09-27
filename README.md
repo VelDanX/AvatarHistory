@@ -198,3 +198,55 @@ git clone https://codeberg.org/VelDanX/AvatarHistory src/userplugins/avatarHisto
 ## Лицензия
 
 GPL-3.0-or-later — см. `LICENSE`.
+
+---
+
+## Структура проекта
+
+```
+avatarHistory/
+├── index.tsx                       # Точка входа: definePlugin, контекстные меню, flux-подписки, start/stop
+├── src/
+│   ├── config.ts                   # Константы: лимит blob, таймауты CDN, интервалы опроса
+│   ├── services.ts                 # Старт/стоп всей фоновой машинерии (снайфер, опрос, бутстрап стора)
+│   ├── tracking.ts                 # Решение «отслеживать ли пользователя» и запись его аватаров
+│   ├── contextMenu.tsx             # Пункты «Remember current avatar» и «Track avatar changes»
+│   ├── settings.tsx                # definePluginSettings + миграция настройки интервала
+│   ├── cdnUrl.ts                   # Сборка URL аватаров на CDN
+│   ├── style.css                   # Стили плагина
+│   │
+│   ├── store/                      # Данные; импортировать только из store/index
+│   │   ├── index.ts                # Публичный API хранилища (barrel)
+│   │   ├── types.ts                # Ключи DataStore и типы (AvatarRecord, AvatarHistory)
+│   │   ├── history.ts              # Чтение/запись истории, отслеживаемые, подписки, React-хуки
+│   │   ├── blobs.ts                # Офлайн-копии: fetch, object URL, data URL, лимит 10 МБ
+│   │   └── transfer.ts             # Экспорт / импорт истории в JSON
+│   │
+│   ├── sync/                       # Синхронизация с Discord и CDN
+│   │   ├── sniffer.ts              # Перехват отрисованных аватаров (resource timing + <img>)
+│   │   ├── recentSync.ts           # Загрузка последних 6 аватаров, которые хранит сервер
+│   │   ├── bgSync.ts               # Фоновая перепроверка: интервалы, stagger, backoff при 429
+│   │   └── cdn.ts                  # HEAD-проверка аватара на CDN и автоочистка битых записей
+│   │
+│   └── ui/                         # Интерфейс
+│       ├── ProfileSection.tsx      # Секция «AVATAR HISTORY» в профиле пользователя
+│       ├── TrackedUsersOverview.tsx# Живой список отслеживаемых в настройках
+│       └── lightbox/
+│           ├── Lightbox.tsx        # Полноэкранный просмотрщик + openAvatarLightbox()
+│           ├── useLightboxState.ts # Хук состояния: навигация, зум, клавиши и мышь
+│           ├── LightboxToolbar.tsx # Нижняя панель действий
+│           ├── AvatarRail.tsx      # Лента всех сохранённых аватаров
+│           ├── ConfirmBar.tsx      # Инлайн-подтверждение опасных действий
+│           ├── IconButton.tsx      # Кнопка-иконка
+│           ├── actions.ts          # Скачивание, применение аватара, экспорт/импорт
+│           ├── gearMenu.tsx        # Меню «More» (шестерёнка)
+│           └── imageMenu.tsx       # ПКМ по картинке внутри лайтбокса
+│
+├── docs/screenshots/               # Скриншоты для README
+└── LICENSE
+```
+
+Поток данных: `index.tsx` → `services.ts` запускает `sync/` и `tracking.ts`; те пишут в
+`store/`, а `ui/` читает оттуда через `store/index.ts` (хуки `useHistory` / `useTrackedUsers`).
+Прямые импорты из отдельных файлов `store/` снаружи запрещены — так рефакторинг хранилища
+не ломает остальной плагин.
