@@ -23,7 +23,7 @@ export default definePlugin({
     name: "AvatarHistory",
     description: "Passively save avatar history of tracked users and browse it from their profile.",
     authors: [{ name: "VelDanX", id: 1348551557355933759n }],
-    version: "0.0.5",
+    version: "0.0.6",
     settings,
     dependencies: ["ProfileSectionsAPI"],
 
@@ -43,6 +43,17 @@ export default definePlugin({
         CURRENT_USER_UPDATE({ user }: { user?: User }) {
             if (!user?.avatar || !settings.store.trackSelf) return;
             void recordUserAvatar(user);
+        },
+        // Guild member data arrives without any rendering: role/nick/username
+        // changes and lazy-loaded member lists both carry the current avatar
+        // hash, so a swap is visible before that avatar is ever on screen.
+        GUILD_MEMBER_UPDATE({ user }: { user?: Partial<User> }) {
+            recordUserIfChanged(user);
+        },
+        GUILD_MEMBERS_CHUNK_BATCH({ chunks }: { chunks?: Array<{ members?: Array<{ user?: Partial<User> }> }> }) {
+            for (const chunk of chunks ?? []) {
+                for (const member of chunk?.members ?? []) recordUserIfChanged(member?.user);
+            }
         },
     },
 

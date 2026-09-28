@@ -25,6 +25,9 @@ export const CDN_RETRY_DELAY_MS = 10_000;
 /** Delay between users when backfilling history on plugin start. */
 export const GAP_FILL_STAGGER_MS = 300;
 
+/** Upper bound on how often the coalesced `lastSeenAt` writes hit the store. */
+export const SEEN_FLUSH_INTERVAL_MS = 5_000;
+
 /** Poll interval defaults (minutes kept only for settings migration). */
 export const DEFAULT_POLL_INTERVAL_MINUTES = 10;
 export const DEFAULT_POLL_INTERVAL_SECONDS = 30;

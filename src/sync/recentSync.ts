@@ -7,7 +7,7 @@
 import { Logger } from "@utils/Logger";
 import { RestAPI, Toasts, UserStore } from "@webpack/common";
 
-import { fetchAvatarBlob, getHistory } from "../store";
+import { fetchAvatarBlob, getHistory, sameHash } from "../store";
 import { purgeInvalidRecords } from "./cdn";
 import { getFoundCount, isSniffingEnabled, recordHash, sweepResourceTiming } from "./sniffer";
 
@@ -76,11 +76,11 @@ export async function pullRecentFromServer(): Promise<number> {
         const liveHash = UserStore.getCurrentUser()?.avatar?.toLowerCase() ?? null;
         for (let i = 0; i < recents.length; i++) {
             const { hash, avatarId } = recents[i];
-            if (i === 0 && liveHash && hash.toLowerCase() !== liveHash && recs.some(r => r.hash === liveHash)) continue;
+            if (i === 0 && liveHash && hash.toLowerCase() !== liveHash && recs.some(r => sameHash(r.hash, liveHash))) continue;
             await recordHash(userId, hash, avatarId);
         }
         for (const rec of recents) {
-            const known = getHistory(userId).find(r => r.hash.toLowerCase() === rec.hash.toLowerCase());
+            const known = getHistory(userId).find(r => sameHash(r.hash, rec.hash));
             if (known && !known.hasBlob) void fetchAvatarBlob(userId, known);
         }
     } catch (e) {

@@ -21,7 +21,6 @@ export class BackgroundSync {
     private timer: number | null = null;
     private sweeping = false;
     private stopped = false;
-    private offset = 0;
     private pausedUntil = 0;
 
     constructor(
@@ -73,10 +72,7 @@ export class BackgroundSync {
         this.sweeping = true;
         try {
             const ids = await this.getSweepIds();
-            if (!ids.length) {
-                this.offset = 0;
-                return;
-            }
+            if (!ids.length) return;
 
             const intervalMs = this.getIntervalMs();
             // Pace the batch to the interval: at most interval/stagger users per
@@ -84,10 +80,12 @@ export class BackgroundSync {
             // 1500ms stagger is 20 users, not 100 requests in a row.
             const cap = Math.max(1, Math.floor(intervalMs / this.staggerMs));
             const size = Math.min(sizeOverride ?? cap, ids.length);
-            let processed = 0;
             for (let i = 0; i < size; i++) {
                 if (this.stopped) return;
-                const id = ids[(this.offset + i) % ids.length];
+                // Ids arrive stalest-first (see sweepTargetIds), so the head of
+                // the list is always whoever has gone longest unconfirmed —
+                // checking them pushes them to the back, no rotation needed.
+                const id = ids[i];
                 try {
                     // checkUser returns true to abort the batch (e.g. after a 429).
                     if (await this.checkUser(id)) break;
@@ -98,10 +96,8 @@ export class BackgroundSync {
                     continue;
                 }
                 if (this.stopped) return;
-                processed++;
                 await sleep(stagger);
             }
-            this.offset = (this.offset + processed) % ids.length;
         } catch (e) {
             log.info("Background avatar sweep aborted", e);
         } finally {

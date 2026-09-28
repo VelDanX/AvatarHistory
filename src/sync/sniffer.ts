@@ -11,7 +11,7 @@ import {
     RESOURCE_SWEEP_INTERVAL_MS,
     SEEN_LIMIT
 } from "../config";
-import { AvatarRecord, fetchAvatarBlob, getHistory, recordAvatarSeen, updateRecord } from "../store";
+import { AvatarRecord, fetchAvatarBlob, getHistory, recordAvatarSeen, sameHash, setLastSeen, updateRecord } from "../store";
 import { checkCdnExists } from "./cdn";
 
 const log = new Logger("AvatarHistory");
@@ -74,15 +74,19 @@ export async function recordHash(userId: string, hash: string, avatarId?: string
     if (!rec) return;
     seen.add(key);
     manageSeenLimit();
-    const known = getHistory(userId).find(r => r.hash === rec.hash);
+    const known = getHistory(userId).find(r => sameHash(r.hash, rec.hash));
     if (known) {
         if (avatarId && known.avatarId !== avatarId) {
             updateRecord(userId, known, { avatarId });
         }
         // Repair: the avatar is on screen right now, so the CDN still serves it.
         // That is our only chance to keep an offline copy before the hash is gone.
-        const current = getHistory(userId).find(r => r.hash === known.hash) ?? known;
+        const current = getHistory(userId).find(r => sameHash(r.hash, known.hash)) ?? known;
         if (!current.hasBlob) void fetchAvatarBlob(userId, current);
+        // A hit without an avatarId is the live avatar → a confirmation.
+        // An `archived/<id>/` hit is a past avatar and says nothing about the
+        // user's current one, so it must not refresh the watermark.
+        if (!avatarId) setLastSeen(userId);
         return;
     }
     const formats: Array<"png" | "gif" | "webp"> = rec.format === "gif" ? ["gif", "webp"] : ["png", "webp", "gif"];
@@ -99,6 +103,7 @@ export async function recordHash(userId: string, hash: string, avatarId?: string
     // and Discord drops those hashes eventually — after that the avatar is gone
     // for good, history entry or no history entry.
     void fetchAvatarBlob(userId, rec);
+    if (!avatarId) setLastSeen(userId);
     found++;
     log.info(`Synced avatar ${rec.hash} from Discord for ${userId}`);
 }

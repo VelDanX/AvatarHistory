@@ -21,10 +21,13 @@ import {
     AvatarRecord,
     fetchAvatarBlob,
     getHistory,
+    getLastSeenAt,
     getTrackedUsers,
     isTracked,
     recordAvatarSeen,
     resetAllHistory,
+    sameHash,
+    setLastSeen,
     setTracked,
     trackedUsers
 } from "./store";
@@ -51,7 +54,7 @@ function buildRecord(avatar: string): AvatarRecord {
 export async function recordUserAvatar(user: User): Promise<void> {
     if (!user.avatar) return;
     const rec = buildRecord(user.avatar);
-    const known = getHistory(user.id).some(r => r.hash === rec.hash);
+    const known = getHistory(user.id).some(r => sameHash(r.hash, rec.hash));
     // Only CDN-verify avatars we haven't recorded yet. checkCdnExists is
     // tri-state: false = confirmed missing, null = network inconclusive
     // (record optimistically; purge will clean up later).
@@ -68,6 +71,9 @@ export async function recordUserAvatar(user: User): Promise<void> {
         }
     }
     await recordAvatarSeen(user.id, rec);
+    // We have just seen this hash on a live user object — that's a confirmation,
+    // whether the record was new or already known.
+    setLastSeen(user.id);
     const newest = getHistory(user.id)[0];
     if (newest) void fetchAvatarBlob(user.id, newest);
 }
@@ -83,7 +89,16 @@ export function isAnyTrackingActive(): boolean {
     return settings.store.trackSelf || settings.store.trackFriends || trackedUsers.size > 0;
 }
 
-/** Target ids for the background sweep (friends + manually tracked, minus self). */
+/**
+ * Target ids for the background sweep (friends + manually tracked, minus self),
+ * ordered stalest-confirmation-first.
+ *
+ * Sorting by `lastSeenAt` replaces a rotating offset: a checked user moves to
+ * the back automatically, so the list is self-balancing. That also makes the
+ * sweep survive the client being closed — on the next launch nobody has been
+ * confirmed recently, so the stalest users are checked first instead of whoever
+ * happens to sit at the head of a static array.
+ */
 export function sweepTargetIds(): string[] {
     const ids = new Set<string>();
     if (settings.store.trackFriends) {
@@ -92,7 +107,7 @@ export function sweepTargetIds(): string[] {
     for (const id of trackedUsers) ids.add(id);
     const self = UserStore.getCurrentUser();
     if (self) ids.delete(self.id);
-    return [...ids];
+    return [...ids].sort((a, b) => getLastSeenAt(a) - getLastSeenAt(b));
 }
 
 async function getSweepIds(): Promise<string[]> {
@@ -136,6 +151,14 @@ export async function fillHistoryGaps(): Promise<void> {
         if (self && id === self.id) continue;
         const user = UserStore.getUser(id);
         if (!user?.avatar) continue;
+        // Nothing to do when the cached avatar is already our newest record.
+        // Skipping the call (and the stagger) is what keeps startup free for
+        // large friend lists — a 300ms sleep per already-known user is ~90s of
+        // serialized no-op work on every launch.
+        if (getHistory(id)[0]?.hash && sameHash(getHistory(id)[0].hash, user.avatar)) {
+            setLastSeen(id);
+            continue;
+        }
         await recordUserAvatar(user);
         await new Promise(r => setTimeout(r, GAP_FILL_STAGGER_MS));
     }
@@ -176,7 +199,10 @@ export async function checkUserOnServer(userId: string): Promise<boolean> {
         if (!user || user.id !== userId || typeof user.avatar !== "string") return false;
 
         const newest = getHistory(userId)[0];
-        if (newest && newest.hash === user.avatar) return false;
+        if (newest && sameHash(newest.hash, user.avatar)) {
+            setLastSeen(userId);
+            return false;
+        }
 
         // Record directly — no synthetic USER_UPDATE dispatch into Flux.
         recordUserIfChanged(user);
@@ -191,7 +217,10 @@ export function recordUserIfChanged(user?: Partial<User>): void {
     if (!user || typeof user.id !== "string" || typeof user.avatar !== "string") return;
     if (!shouldTrack(user.id)) return;
     const newest = getHistory(user.id)[0];
-    if (newest && newest.hash === user.avatar) return;
+    if (newest && sameHash(newest.hash, user.avatar)) {
+        setLastSeen(user.id);
+        return;
+    }
     void recordUserAvatar(user as User);
 }
 

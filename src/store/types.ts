@@ -12,7 +12,7 @@ export const HISTORY_KEY = "vc-avh-history";
 export const TRACKED_KEY = "vc-avh-tracked";
 export const BLOB_KEY_PREFIX = "vc-avh-blob:";
 
-export const HISTORY_VERSION = 1;
+export const HISTORY_VERSION = 2;
 
 export interface AvatarRecord {
     hash: string;
@@ -25,7 +25,19 @@ export interface AvatarRecord {
     height: number;
 }
 
-export type AvatarHistory = Record<string, AvatarRecord[]>;
+export interface UserHistory {
+    /** Avatars, newest first. Always replaced wholesale, never mutated. */
+    records: AvatarRecord[];
+    /**
+     * Epoch ms of the last moment we confirmed this user's *current* avatar
+     * hash ourselves. 0 means "never confirmed" — those users sort first in
+     * the background sweep. Deliberately not part of the export format: an
+     * imported file cannot carry a meaningful observation time.
+     */
+    lastSeenAt: number;
+}
+
+export type AvatarHistory = Record<string, UserHistory>;
 
 export interface StoredHistory {
     version: number;
@@ -33,3 +45,11 @@ export interface StoredHistory {
 }
 
 export const blobKeyFor = (userId: string, hash: string) => `${BLOB_KEY_PREFIX}${userId}:${hash}`;
+
+/**
+ * Hash equality, case-insensitive. Avatar hashes are hex and Discord sends
+ * them lowercased, but records written from raw `user.avatar` strings are not
+ * normalized anywhere else — comparing with `===` could otherwise treat a
+ * casing difference as a brand new avatar and record it twice.
+ */
+export const sameHash = (a: string, b: string): boolean => a.toLowerCase() === b.toLowerCase();

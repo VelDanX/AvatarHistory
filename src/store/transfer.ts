@@ -9,20 +9,28 @@ import { Logger } from "@utils/Logger";
 
 import { BLOB_BUDGET_BYTES } from "../config";
 import { applyBlobMeta, blobToDataUrl } from "./blobs";
-import { getHistory, history, notifyListeners, persistHistory, updateRecord } from "./history";
-import { AvatarHistory, AvatarRecord, blobKeyFor } from "./types";
+import { getHistory, getLastSeenAt, history, notifyListeners, persistHistory, updateRecord } from "./history";
+import { AvatarRecord, blobKeyFor, sameHash } from "./types";
 
 const log = new Logger("AvatarHistory");
 
+/** On-disk export format version. Bumped independently of HISTORY_VERSION:
+ * the file deliberately keeps the flat `Record<userId, AvatarRecord[]>` shape so
+ * it stays readable by older builds and carries no local bookkeeping. */
+export const EXPORT_VERSION = 1;
+
 export async function exportHistory(): Promise<Blob> {
+    const users: Record<string, AvatarRecord[]> = {};
+    for (const [userId, entry] of Object.entries(history)) users[userId] = entry.records;
+
     const payload: {
         version: number;
         exportedAt: number;
-        users: AvatarHistory;
+        users: Record<string, AvatarRecord[]>;
         blobs: Record<string, string>;
-    } = { version: 1, exportedAt: Date.now(), users: history, blobs: {} };
+    } = { version: EXPORT_VERSION, exportedAt: Date.now(), users, blobs: {} };
 
-    for (const [userId, recs] of Object.entries(history)) {
+    for (const [userId, recs] of Object.entries(users)) {
         for (const rec of recs) {
             if (!rec.hasBlob) continue;
             const blob = await get<Blob>(blobKeyFor(userId, rec.hash));
@@ -50,10 +58,10 @@ function isValidRecord(v: unknown): v is AvatarRecord {
 export async function parseImport(data: string): Promise<number> {
     const parsed = JSON.parse(data) as {
         version?: number;
-        users?: AvatarHistory;
+        users?: Record<string, unknown>;
         blobs?: Record<string, string>;
     };
-    if (parsed.version !== 1 || !parsed.users) throw new Error("Invalid avatar history file");
+    if (parsed.version !== EXPORT_VERSION || !parsed.users) throw new Error("Invalid avatar history file");
 
     let imported = 0;
     for (const [userId, recs] of Object.entries(parsed.users)) {
@@ -62,13 +70,16 @@ export async function parseImport(data: string): Promise<number> {
         const fresh: AvatarRecord[] = [];
         for (const rec of recs) {
             if (!isValidRecord(rec)) continue;
-            if (existing.some(r => r.hash === rec.hash) || fresh.some(r => r.hash === rec.hash)) continue;
+            if (existing.some(r => sameHash(r.hash, rec.hash)) || fresh.some(r => sameHash(r.hash, rec.hash))) continue;
             rec.hasBlob = false;
             rec.size = 0;
             fresh.push(rec);
         }
         if (!fresh.length) continue;
-        history[userId] = [...existing, ...fresh].sort((a, b) => b.timestamp - a.timestamp);
+        // Keep the local lastSeenAt: imported records are historical and carry no
+        // observation time, so they must not look "confirmed" to the sweep.
+        const records = [...existing, ...fresh].sort((a, b) => b.timestamp - a.timestamp);
+        history[userId] = { records, lastSeenAt: getLastSeenAt(userId) };
         imported += fresh.length;
         for (const rec of fresh) {
             const dataUrl = parsed.blobs?.[`${userId}:${rec.hash}`];

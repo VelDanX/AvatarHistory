@@ -8,6 +8,7 @@ import { del, delMany, get, set } from "@api/DataStore";
 import { Logger } from "@utils/Logger";
 import { React } from "@webpack/common";
 
+import { SEEN_FLUSH_INTERVAL_MS } from "../config";
 // NOTE: intentional cycle history <-> blobs. Both modules only reference each
 // other's *function declarations* at runtime — nothing executes at module
 // evaluation time, so ESM handles this fine. Do not "fix" by inlining or
@@ -19,7 +20,10 @@ import {
     blobKeyFor,
     HISTORY_KEY,
     HISTORY_VERSION,
-    TRACKED_KEY
+    sameHash,
+    StoredHistory,
+    TRACKED_KEY,
+    UserHistory
 } from "./types";
 
 const log = new Logger("AvatarHistory");
@@ -31,10 +35,15 @@ const EMPTY_HISTORY: AvatarRecord[] = [];
 
 /**
  * Read-only access to a user's history. Does NOT create an empty entry in the
- * store — viewing a profile must not pollute `history` with `userId: []`.
+ * store — viewing a profile must not pollute `history` with `userId: {}`.
  */
 export function getHistory(userId: string): AvatarRecord[] {
-    return history[userId] ?? [];
+    return history[userId]?.records ?? [];
+}
+
+/** When we last confirmed this user's current avatar, or 0 if never. */
+export function getLastSeenAt(userId: string): number {
+    return history[userId]?.lastSeenAt ?? 0;
 }
 
 export function isTracked(userId: string): boolean {
@@ -46,12 +55,13 @@ export function isTracked(userId: string): boolean {
  * new record object). This is what makes `useSyncExternalStore` notice changes.
  */
 export function updateRecord(userId: string, rec: AvatarRecord, patch?: Partial<AvatarRecord>): void {
-    const recs = getHistory(userId);
-    const i = recs.indexOf(rec);
+    const entry = history[userId];
+    if (!entry) return;
+    const i = entry.records.indexOf(rec);
     if (i === -1) return;
-    const next = recs.slice();
+    const next = entry.records.slice();
     next[i] = patch ? { ...rec, ...patch } : { ...rec };
-    history[userId] = next;
+    history[userId] = { records: next, lastSeenAt: entry.lastSeenAt };
     void persistHistory();
     notifyListeners();
 }
@@ -69,16 +79,36 @@ export async function getTrackedUsers(): Promise<string[]> {
     return [...trackedUsers];
 }
 
+/** A stored user entry in either the v2 ({records, lastSeenAt}) or the legacy (array) shape. */
+function toUserHistory(value: unknown): UserHistory | null {
+    if (Array.isArray(value)) {
+        const records = value.filter(r => r && typeof r === "object" && typeof (r as AvatarRecord).hash === "string");
+        return records.length ? { records, lastSeenAt: 0 } : null;
+    }
+    if (!value || typeof value !== "object") return null;
+    const { records, lastSeenAt } = value as Partial<UserHistory>;
+    if (!Array.isArray(records) || !records.length) return null;
+    return { records, lastSeenAt: typeof lastSeenAt === "number" ? lastSeenAt : 0 };
+}
+
+/**
+ * Accepts every shape the store has ever held and returns the v2 form:
+ * v2 `{ version: 2, users: { id: { records, lastSeenAt } } }`,
+ * v1 `{ version: 1, users: { id: AvatarRecord[] } }`,
+ * v0 a bare `{ id: AvatarRecord[] }` (Discord IDs are numeric, so a literal
+ * "users" key cannot collide with a real user).
+ */
 function migrateStoredHistory(raw: unknown): AvatarHistory | undefined {
     if (!raw || typeof raw !== "object") return undefined;
-    // Current format: { version, users }
-    if ("users" in raw) {
-        const { users } = raw as { version: number; users: AvatarHistory };
-        return users && typeof users === "object" ? users : undefined;
+    const source = "users" in raw ? (raw as { users: unknown }).users : raw;
+    if (!source || typeof source !== "object" || Array.isArray(source)) return undefined;
+
+    const out: AvatarHistory = {};
+    for (const [userId, value] of Object.entries(source as Record<string, unknown>)) {
+        const entry = toUserHistory(value);
+        if (entry) out[userId] = entry;
     }
-    // Legacy format (v0): a plain Record<userId, AvatarRecord[]> — Discord IDs
-    // are numeric, so a literal "users" key cannot collide with a real user.
-    return raw as AvatarHistory;
+    return Object.keys(out).length ? out : undefined;
 }
 
 export async function loadStore(): Promise<void> {
@@ -86,17 +116,52 @@ export async function loadStore(): Promise<void> {
     const t = await get<string[] | undefined>(TRACKED_KEY);
     const users = migrateStoredHistory(h);
     if (users) {
-        for (const [userId, recs] of Object.entries(users)) {
-            if (Array.isArray(recs) && recs.length) history[userId] = recs;
-        }
+        for (const [userId, entry] of Object.entries(users)) history[userId] = entry;
+        // Rewrite once so the next start reads v2 directly instead of
+        // re-migrating on every launch.
+        await persistHistory();
     }
     if (t) trackedUsers = new Set(t.filter(id => typeof id === "string" && id));
     notifyListeners();
     notifyTrackedListeners();
 }
 
+let seenDirty = false;
+let seenFlushTimer: ReturnType<typeof setTimeout> | null = null;
+
+/**
+ * Note that we just confirmed a user's current avatar. Persisting every call
+ * would rewrite the entire history once per user per sweep, so writes are
+ * coalesced: in-memory immediately, flushed at most once per interval.
+ */
+export function setLastSeen(userId: string, at = Date.now()): void {
+    const entry = history[userId];
+    if (!entry || entry.lastSeenAt === at) return;
+    // Mutating in place is safe: the records array reference is untouched, so
+    // useSyncExternalStore snapshots stay stable and don't re-render.
+    entry.lastSeenAt = at;
+    seenDirty = true;
+    if (seenFlushTimer != null) return;
+    seenFlushTimer = setTimeout(() => {
+        seenFlushTimer = null;
+        void flushLastSeen();
+    }, SEEN_FLUSH_INTERVAL_MS);
+}
+
+/** Writes any pending `lastSeenAt` updates. Call on plugin stop so a session
+ * ending right after a sweep still persists its watermark. */
+export async function flushLastSeen(): Promise<void> {
+    if (seenFlushTimer != null) {
+        clearTimeout(seenFlushTimer);
+        seenFlushTimer = null;
+    }
+    if (!seenDirty) return;
+    seenDirty = false;
+    await persistHistory();
+}
+
 export async function persistHistory(): Promise<void> {
-    const payload = { version: HISTORY_VERSION, users: history };
+    const payload: StoredHistory = { version: HISTORY_VERSION, users: history };
     await set(HISTORY_KEY, payload);
 }
 
@@ -131,24 +196,26 @@ export function subscribeTracked(listener: () => void): () => void {
 }
 
 export async function recordAvatarSeen(userId: string, rec: AvatarRecord): Promise<void> {
-    const recs = getHistory(userId);
-    const existing = recs.find(r => r.hash === rec.hash);
+    const entry = history[userId];
+    const recs = entry?.records ?? [];
+    const existing = recs.find(r => sameHash(r.hash, rec.hash));
     if (existing) {
         if (rec.timestamp < existing.timestamp) {
             updateRecord(userId, existing, { timestamp: rec.timestamp });
         }
         return;
     }
-    history[userId] = [...recs, rec].sort((a, b) => b.timestamp - a.timestamp);
+    const records = [...recs, rec].sort((a, b) => b.timestamp - a.timestamp);
+    history[userId] = { records, lastSeenAt: entry?.lastSeenAt ?? 0 };
     await persistHistory();
     notifyListeners();
 }
 
 export async function removeRecord(userId: string, rec: AvatarRecord): Promise<void> {
-    const recs = getHistory(userId);
-    if (!recs.includes(rec)) return;
-    const next = recs.filter(r => r !== rec);
-    if (next.length) history[userId] = next;
+    const entry = history[userId];
+    if (!entry?.records.includes(rec)) return;
+    const next = entry.records.filter(r => r !== rec);
+    if (next.length) history[userId] = { records: next, lastSeenAt: entry.lastSeenAt };
     else delete history[userId];
     await del(blobKeyFor(userId, rec.hash));
     revokeBlobObjectUrl(userId, rec);
@@ -161,6 +228,8 @@ export async function removeRecord(userId: string, rec: AvatarRecord): Promise<v
 export async function clearUserHistory(userId: string): Promise<void> {
     const recs = getHistory(userId);
     if (!recs.length) return;
+    // lastSeenAt goes with the entry: a user with no records has nothing to
+    // confirm, and the sweep will recreate the entry on the next check.
     await delMany(recs.map(r => blobKeyFor(userId, r.hash)));
     for (const r of recs) revokeBlobObjectUrl(userId, r);
     delete history[userId];
@@ -170,8 +239,8 @@ export async function clearUserHistory(userId: string): Promise<void> {
 
 export async function resetAllHistory(): Promise<void> {
     const blobKeys: string[] = [];
-    for (const [userId, recs] of Object.entries(history)) {
-        for (const r of recs) {
+    for (const [userId, entry] of Object.entries(history)) {
+        for (const r of entry.records) {
             blobKeys.push(blobKeyFor(userId, r.hash));
             revokeBlobObjectUrl(userId, r);
         }
@@ -194,7 +263,7 @@ export async function resetAllHistory(): Promise<void> {
 export function useHistory(userId: string): AvatarRecord[] {
     return React.useSyncExternalStore(
         subscribeHistory,
-        () => history[userId] ?? EMPTY_HISTORY
+        () => history[userId]?.records ?? EMPTY_HISTORY
     );
 }
 

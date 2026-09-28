@@ -8,7 +8,7 @@ import { Logger } from "@utils/Logger";
 import { UserStore } from "@webpack/common";
 
 import { migratePollIntervalSetting, settings } from "./settings";
-import { clearBlobUrls, loadStore, setTracked } from "./store";
+import { clearBlobUrls, flushLastSeen, loadStore, setTracked } from "./store";
 import { purgeInvalidRecords } from "./sync/cdn";
 import { pullRecentFromServer } from "./sync/recentSync";
 import { startRecentSync, stopRecentSync } from "./sync/sniffer";
@@ -60,4 +60,7 @@ export function stopAvatarHistory(): void {
     stopRecentSync();
     stopBackgroundSync();
     clearBlobUrls();
+    // A sweep may have touched lastSeenAt moments before shutdown; don't lose
+    // those watermarks to the coalescing timer.
+    void flushLastSeen();
 }
