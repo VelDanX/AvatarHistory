@@ -11,7 +11,7 @@ import {
     RESOURCE_SWEEP_INTERVAL_MS,
     SEEN_LIMIT
 } from "../config";
-import { AvatarRecord, getHistory, recordAvatarSeen, updateRecord } from "../store";
+import { AvatarRecord, fetchAvatarBlob, getHistory, recordAvatarSeen, updateRecord } from "../store";
 import { checkCdnExists } from "./cdn";
 
 const log = new Logger("AvatarHistory");
@@ -79,6 +79,10 @@ export async function recordHash(userId: string, hash: string, avatarId?: string
         if (avatarId && known.avatarId !== avatarId) {
             updateRecord(userId, known, { avatarId });
         }
+        // Repair: the avatar is on screen right now, so the CDN still serves it.
+        // That is our only chance to keep an offline copy before the hash is gone.
+        const current = getHistory(userId).find(r => r.hash === known.hash) ?? known;
+        if (!current.hasBlob) void fetchAvatarBlob(userId, current);
         return;
     }
     const formats: Array<"png" | "gif" | "webp"> = rec.format === "gif" ? ["gif", "webp"] : ["png", "webp", "gif"];
@@ -91,6 +95,10 @@ export async function recordHash(userId: string, hash: string, avatarId?: string
     // exists === null (network inconclusive): record optimistically — purge will
     // clean it up later if it really doesn't exist.
     await recordAvatarSeen(userId, rec);
+    // Keep a local copy right away. A record without a blob is only a CDN link,
+    // and Discord drops those hashes eventually — after that the avatar is gone
+    // for good, history entry or no history entry.
+    void fetchAvatarBlob(userId, rec);
     found++;
     log.info(`Synced avatar ${rec.hash} from Discord for ${userId}`);
 }

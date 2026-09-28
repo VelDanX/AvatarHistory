@@ -2,6 +2,8 @@
 
 Vencord / Equicord userplugin that passively records avatar changes and lets you browse the history right from the user profile.
 
+[![Vencord](https://img.shields.io/badge/Vencord-userplugin-5865F2?logo=vencord&logoColor=white)](https://docs.vencord.dev/plugins) [![Equicord](https://img.shields.io/badge/Equicord-userplugin-768AD4)](https://docs.equicord.org/plugins) [![TypeScript](https://img.shields.io/badge/TypeScript-6.x-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org) [![License](https://img.shields.io/badge/license-GPL--3.0--or--later-blue?logo=gnu&logoColor=white)](LICENSE) [![Version](https://img.shields.io/badge/version-0.0.5-informational)](https://github.com/VelDanX/AvatarHistory/releases) [![GitHub](https://img.shields.io/badge/repo-GitHub-181717?logo=github&logoColor=white)](https://github.com/VelDanX/AvatarHistory) [![Codeberg](https://img.shields.io/badge/mirror-Codeberg-2185D0?logo=codeberg&logoColor=white)](https://codeberg.org/VelDanX/AvatarHistory)
+
 **English** · [Русский](#русский)
 
 ## Features
@@ -13,13 +15,12 @@ Vencord / Equicord userplugin that passively records avatar changes and lets you
 - Settings show a live overview of tracked users (count + list, badges for friends/manual/you)
 - Polite to the API: background checks are paced, capped per interval and back off automatically on rate limits
 - Instant capture: any rendered avatar of a tracked user (member list, DMs, messages...) is recorded on the spot
-- Syncs the last 6 avatars that Discord keeps server-side
+- Syncs the whole list of your own previous avatars that Discord keeps server-side (`/users/@me/avatars`) — at startup or on demand from the context menu
 - Profile section with a 4-avatar preview; click opens the fullscreen viewer
-- Lightbox: navigate, download, copy URL, delete, "remember current avatar", set a saved avatar as your profile picture (toolbar button or image right-click menu)
-- Set any saved avatar of yours directly from the lightbox as your profile avatar (animated ones require Nitro)
-- Offline copies (blobs, ≤ 10 MB each) stay viewable even after the CDN drops an avatar
-- Export / import history as JSON
-- Auto-purge of records that no longer resolve on the CDN
+- Lightbox: navigate, download, copy URL, delete, "remember current avatar", and set one of your saved avatars as your profile picture (toolbar button or image right-click menu; animated ones need Nitro)
+- Offline copies (blobs, ≤ 10 MB each) are saved the moment an avatar is seen and stay viewable even after the CDN drops it; older entries without a copy are repaired when you open the profile
+- Export / import history as JSON (image data is embedded for entries that have a local copy)
+- Auto-purge of your own records that no longer resolve on the CDN (at startup and on manual sync)
 
 ## Preview
 
@@ -27,18 +28,19 @@ Vencord / Equicord userplugin that passively records avatar changes and lets you
 
 ![Context menu](docs/screenshots/context-menu.png)
 
-**Profile section** — the user profile modal shows an "AVATAR HISTORY" section with a preview of the last 4 avatars; clicking any preview opens the fullscreen gallery:
+**Profile section** — the user profile modal shows an "Avatar history" section (with an "N recorded" counter) and a preview of the last 4 avatars; clicking any preview opens the fullscreen gallery:
 
 ![Profile section](docs/screenshots/profile-section.png)
 
-**Lightbox** — fullscreen viewer over the whole history: large preview, a "1 of N" counter and the record timestamp (UTC) on top, an action bar at the bottom (set as profile avatar, download, copy URL, delete, "More" menu), and a rail of all saved avatars below:
+**Lightbox** — fullscreen viewer over the whole history: large preview, a "1 of N" counter, the record timestamp (UTC plus your local offset) and the image size on top, an action bar at the bottom (set as profile avatar, download, copy URL, delete, "More" menu), and a rail of all saved avatars below:
 
-![Lightbox](https://media.discordapp.net/attachments/1282733306856603771/1552164728749559828/image.png?ex=6ab49d8d&is=6ab34c0d&hm=8f5256f233fd7af244d5d874d37e06f33e9031328f9f68b3de7ab3ce6649344a&=&format=webp&quality=lossless)
+![Lightbox](docs/screenshots/lightbox.png)
 
 ## Settings
 
 | Setting | Default | Description |
 | ------- | ------- | ----------- |
+| trackedOverview | — | Live overview of tracked users: count, list with source badges, copyable user IDs, per-user remove buttons |
 | trackSelf | ✔ | Track your own avatar changes |
 | trackFriends | ✘ | Auto-track avatar changes of all your friends |
 | pollTracked | ✔ | Periodically re-check tracked users' avatars in the background. If disabled, avatars of other tracked users only update when you view their profile |
@@ -92,7 +94,7 @@ All data stays local (IndexedDB via Vencord's DataStore). Nothing is synced to t
 | --- | ------- |
 | `vc-avh-history` | Per-user metadata (hash, timestamp, format, dimensions) |
 | `vc-avh-tracked` | Manually tracked user IDs |
-| `vc-avh-blob:<userId>:<hash>` | Offline image copy as a Blob (≤ 10 MB) |
+| `vc-avh-blob:<userId>:<hash>` | Offline image copy as a Blob (≤ 10 MB per copy) |
 
 ## License
 
@@ -114,13 +116,12 @@ GPL-3.0-or-later — see `LICENSE`.
 - В настройках — живой обзор отслеживаемых (количество + список, бейджи «друг»/«вручную»/«вы»)
 - Бережно к API: фоновые проверки идут с паузами, ограничены за интервал и сами отступают при рейт-лимитах
 - Мгновенный захват: любая отрисованная аватарка отслеживаемого юзера (список участников, DM, сообщения...) попадает в историю сразу
-- Синхронизация последних 6 аватаров с сервера Discord
+- Синхронизация всего списка своих прошлых аватаров, которые хранит сервер Discord (`/users/@me/avatars`) — при старте или по запросу из контекстного меню
 - Секция в профиле с превью 4 аватаров; клик открывает полноэкранный просмотр
-- Лайтбокс: листание, скачивание, копия URL, удаление, «запомнить текущий аватар», установка сохранённой аватарки как аватар профиля (кнопка на панели или ПКМ по картинке)
-- Любой сохранённый свой аватар можно сразу из лайтбокса поставить как аватар профиля (анимированные — нужен Nitro)
-- Офлайн-копии (blobs ≤ 10 МБ) остаются доступными даже после удаления аватара с CDN
-- Экспорт / импорт истории в JSON
-- Автоочистка записей, которых больше нет на CDN
+- Лайтбокс: листание, скачивание, копия URL, удаление, «запомнить текущий аватар» и установка любого сохранённого своего аватара как аватар профиля (кнопка на панели или ПКМ по картинке; для анимированных нужен Nitro)
+- Офлайн-копии (blobs, ≤ 10 МБ каждый) сохраняются в момент, когда аватар увиден, и остаются доступными даже после удаления аватара с CDN; старые записи без копии докачиваются при открытии профиля
+- Экспорт / импорт истории в JSON (данные картинок встраиваются для записей, у которых есть локальная копия)
+- Автоочистка собственных записей, которых больше нет на CDN (при старте и при ручном синке)
 
 ## Превью
 
@@ -128,18 +129,19 @@ GPL-3.0-or-later — see `LICENSE`.
 
 ![Контекстное меню](docs/screenshots/context-menu.png)
 
-**Секция в профиле** — в модалке профиля отображается секция «AVATAR HISTORY» с превью последних 4 аватаров; клик по любому превью открывает полноэкранную галерею:
+**Секция в профиле** — в модалке профиля отображается секция «Avatar history» со счётчиком «N recorded» и превью последних 4 аватаров; клик по любому превью открывает полноэкранную галерею:
 
 ![Секция в профиле](docs/screenshots/profile-section.png)
 
-**Галерея (лайтбокс)** — полноэкранный просмотр всей истории: крупный аватар, счётчик «1 of N» и дата записи (UTC) сверху, панель действий снизу (поставить как аватар профиля для своей истории, скачивание, копия URL, удаление, меню «More») и лента всех сохранённых аватаров:
+**Галерея (лайтбокс)** — полноэкранный просмотр всей истории: крупный аватар, счётчик «1 of N», дата записи (UTC + локальный часовой пояс) и размер картинки сверху, панель действий снизу (поставить как аватар профиля для своей истории, скачивание, копия URL, удаление, меню «More») и лента всех сохранённых аватаров:
 
-![Лайтбокс](https://media.discordapp.net/attachments/1282733306856603771/1552164728749559828/image.png?ex=6ab49d8d&is=6ab34c0d&hm=8f5256f233fd7af244d5d874d37e06f33e9031328f9f68b3de7ab3ce6649344a&=&format=webp&quality=lossless)
+![Лайтбокс](docs/screenshots/lightbox.png)
 
 ## Настройки
 
 | Настройка | По умолчанию | Описание |
 | --------- | ------------ | -------- |
+| trackedOverview | — | Живой обзор отслеживаемых: количество, список с бейджами источника, копируемые UserID, кнопки удаления каждого пользователя |
 | trackSelf | ✔ | Отслеживать свой аватар |
 | trackFriends | ✘ | Автоотслеживание аватаров всех друзей |
 | pollTracked | ✔ | Периодически перепроверять аватарки отслеживаемых в фоне. Если выключено — аватарки других отслеживаемых обновляются только при просмотре их профиля |
@@ -193,7 +195,7 @@ git clone https://codeberg.org/VelDanX/AvatarHistory src/userplugins/avatarHisto
 | ---- | ---------- |
 | `vc-avh-history` | Метаданные записей по пользователям (hash, timestamp, формат, размеры) |
 | `vc-avh-tracked` | Вручную отслеживаемые ID |
-| `vc-avh-blob:<userId>:<hash>` | Офлайн-копия изображения как Blob (≤ 10 МБ) |
+| `vc-avh-blob:<userId>:<hash>` | Офлайн-копия изображения как Blob (≤ 10 МБ на копию) |
 
 ## Лицензия
 
@@ -205,41 +207,41 @@ GPL-3.0-or-later — см. `LICENSE`.
 
 ```
 avatarHistory/
-├── index.tsx                       # Точка входа: definePlugin, контекстные меню, flux-подписки, start/stop
+├── index.tsx                       # Точка входа: definePlugin, контекстные меню, flux-хукеры, start/stop
 ├── src/
-│   ├── config.ts                   # Константы: лимит blob, таймауты CDN, интервалы опроса
-│   ├── services.ts                 # Старт/стоп всей фоновой машинерии (снайфер, опрос, бутстрап стора)
+│   ├── config.ts                   # Константы: бюджет копии, таймаут CDN, интервалы, маркер CDN-URL
+│   ├── services.ts                 # Старт/стоп фоновой машинерии (снайфер, опрос, загрузка стора)
 │   ├── tracking.ts                 # Решение «отслеживать ли пользователя» и запись его аватаров
-│   ├── contextMenu.tsx             # Пункты «Remember current avatar» и «Track avatar changes»
+│   ├── contextMenu.tsx             # Пункты меню: запомнить аватар, трекинг, синк, сброс истории
 │   ├── settings.tsx                # definePluginSettings + миграция настройки интервала
-│   ├── cdnUrl.ts                   # Сборка URL аватаров на CDN
+│   ├── cdnUrl.ts                   # Сборка URL аватара на CDN (обычный и архивный)
 │   ├── style.css                   # Стили плагина
 │   │
 │   ├── store/                      # Данные; импортировать только из store/index
-│   │   ├── index.ts                # Публичный API хранилища (barrel)
+│   │   ├── index.ts                # Barrel: переэкспорт storage, единственная точка импорта для плагина
 │   │   ├── types.ts                # Ключи DataStore и типы (AvatarRecord, AvatarHistory)
-│   │   ├── history.ts              # Чтение/запись истории, отслеживаемые, подписки, React-хуки
-│   │   ├── blobs.ts                # Офлайн-копии: fetch, object URL, data URL, лимит 10 МБ
+│   │   ├── history.ts              # История, отслеживаемые, подписки, хуки useHistory / useTrackedUsers
+│   │   ├── blobs.ts                # Офлайн-копии: загрузка, object URL, data URL, лимит 10 МБ на копию
 │   │   └── transfer.ts             # Экспорт / импорт истории в JSON
 │   │
 │   ├── sync/                       # Синхронизация с Discord и CDN
 │   │   ├── sniffer.ts              # Перехват отрисованных аватаров (resource timing + <img>)
-│   │   ├── recentSync.ts           # Загрузка последних 6 аватаров, которые хранит сервер
+│   │   ├── recentSync.ts           # Свои прошлые аватары с сервера (/users/@me/avatars) + ручной синк
 │   │   ├── bgSync.ts               # Фоновая перепроверка: интервалы, stagger, backoff при 429
-│   │   └── cdn.ts                  # HEAD-проверка аватара на CDN и автоочистка битых записей
+│   │   └── cdn.ts                  # HEAD-проверка аватара на CDN и очистка битых записей (по умолчанию у себя)
 │   │
 │   └── ui/                         # Интерфейс
-│       ├── ProfileSection.tsx      # Секция «AVATAR HISTORY» в профиле пользователя
+│       ├── ProfileSection.tsx      # Секция «Avatar history» с миниатюрами в профиле
 │       ├── TrackedUsersOverview.tsx# Живой список отслеживаемых в настройках
 │       └── lightbox/
 │           ├── Lightbox.tsx        # Полноэкранный просмотрщик + openAvatarLightbox()
-│           ├── useLightboxState.ts # Хук состояния: навигация, зум, клавиши и мышь
-│           ├── LightboxToolbar.tsx # Нижняя панель действий
+│           ├── useLightboxState.ts # Хук состояния: индекс, записи, клавиши и клики по зонам
+│           ├── LightboxToolbar.tsx # Панель действий под просмотрщиком
 │           ├── AvatarRail.tsx      # Лента всех сохранённых аватаров
 │           ├── ConfirmBar.tsx      # Инлайн-подтверждение опасных действий
 │           ├── IconButton.tsx      # Кнопка-иконка
 │           ├── actions.ts          # Скачивание, применение аватара, экспорт/импорт
-│           ├── gearMenu.tsx        # Меню «More» (шестерёнка)
+│           ├── gearMenu.tsx        # Меню шестерёнки: трекинг, экспорт/импорт, очистка истории
 │           └── imageMenu.tsx       # ПКМ по картинке внутри лайтбокса
 │
 ├── docs/screenshots/               # Скриншоты для README

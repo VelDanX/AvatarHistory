@@ -45,15 +45,15 @@ export function startAvatarHistory(): void {
                 void setTracked(self.id, true).then(() => recordUserAvatar(self));
             }
         }
-        void fillHistoryGaps();
+        void fillHistoryGaps().catch(e => log.warn("Startup gap fill failed", e));
     }).finally(() => {
         resolveReady();
         const self = UserStore.getCurrentUser();
         void pullRecentFromServer();
+        // Self only: other users' records are still copy-less back-fill candidates,
+        // and purgeInvalidRecords would eat the ones whose CDN copy is already gone.
         if (self) void purgeInvalidRecords(self.id);
     });
-
-    log.info("AvatarHistory started");
 }
 
 export function stopAvatarHistory(): void {

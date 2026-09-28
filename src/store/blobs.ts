@@ -43,6 +43,14 @@ export async function fetchAvatarBlob(userId: string, rec: AvatarRecord): Promis
                 }
             }
             if (!blob) return null;
+            // A 200 is not proof of an image. Storing an error page under a blob key
+            // would render as a permanently broken thumbnail that never re-fetches,
+            // so reject non-image bodies here instead of guessing from the size.
+            const bt = (blob.type ?? "").toLowerCase();
+            if (bt && !bt.startsWith("image/") && bt !== "application/octet-stream") {
+                log.debug("fetchAvatarBlob got a non-image body", userId, rec.hash, bt);
+                return null;
+            }
             if (blob.size <= BLOB_BUDGET_BYTES) {
                 applyBlobMeta(userId, rec, blob);
                 await set(key, blob);

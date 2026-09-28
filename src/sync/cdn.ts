@@ -66,8 +66,10 @@ export async function cdnAvatarExists(userId: string, hash: string, formats: Arr
                 }
                 const ct = (res.headers.get("Content-Type") ?? "").toLowerCase();
                 if (!ct.startsWith("image/")) return false;
-                const cl = Number(res.headers.get("Content-Length") ?? "0");
-                if (cl > 0 && cl < 1000) return false;
+                // No size floor here: Discord serves its error bodies as
+                // application/json, which the content-type check above already
+                // rejects, while a real avatar can compress below 1 kB. Refusing
+                // small images would make the purge delete valid records.
                 return true;
             } catch {
                 // Timeout / abort / network failure — inconclusive.

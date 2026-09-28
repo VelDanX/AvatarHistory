@@ -156,13 +156,13 @@ export async function removeRecord(userId: string, rec: AvatarRecord): Promise<v
     notifyListeners();
 }
 
-export async function clearUserHistory(userId: string, clearBlob = false): Promise<void> {
+/** Drops a user's whole history. Blobs always go with it — a blob whose record
+ * is gone is unreachable and would sit in IndexedDB forever. */
+export async function clearUserHistory(userId: string): Promise<void> {
     const recs = getHistory(userId);
     if (!recs.length) return;
-    if (clearBlob) {
-        await delMany(recs.map(r => blobKeyFor(userId, r.hash)));
-        for (const r of recs) revokeBlobObjectUrl(userId, r);
-    }
+    await delMany(recs.map(r => blobKeyFor(userId, r.hash)));
+    for (const r of recs) revokeBlobObjectUrl(userId, r);
     delete history[userId];
     await persistHistory();
     notifyListeners();

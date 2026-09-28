@@ -27,7 +27,7 @@ export class BackgroundSync {
     constructor(
         private readonly ready: Promise<void>,
         private readonly getSweepIds: () => Promise<string[]>,
-        private readonly checkUser: (userId: string) => Promise<void>,
+        private readonly checkUser: (userId: string) => Promise<boolean>,
         private readonly getIntervalMs: () => number,
         private readonly staggerMs = DEFAULT_STAGGER_MS,
     ) {}
@@ -61,8 +61,14 @@ export class BackgroundSync {
     }
 
     private async sweep(sizeOverride?: number, staggerOverride?: number): Promise<void> {
-
-        if (this.sweeping || this.stopped || Date.now() < this.pausedUntil) return;
+        if (this.sweeping || this.stopped) return;
+        // Paused (e.g. after a 429): reschedule *before* bailing out. The pending
+        // timer is already consumed at this point, so returning without a new one
+        // would kill the sweep chain until the next plugin restart.
+        if (Date.now() < this.pausedUntil) {
+            this.scheduleNext();
+            return;
+        }
         const stagger = staggerOverride ?? this.staggerMs;
         this.sweeping = true;
         try {
@@ -73,13 +79,18 @@ export class BackgroundSync {
             }
 
             const intervalMs = this.getIntervalMs();
-            const cap = Math.max(100, Math.floor(intervalMs / this.staggerMs));
+            // Pace the batch to the interval: at most interval/stagger users per
+            // sweep. A hard floor here would defeat pacing — a 30s interval with a
+            // 1500ms stagger is 20 users, not 100 requests in a row.
+            const cap = Math.max(1, Math.floor(intervalMs / this.staggerMs));
             const size = Math.min(sizeOverride ?? cap, ids.length);
+            let processed = 0;
             for (let i = 0; i < size; i++) {
                 if (this.stopped) return;
                 const id = ids[(this.offset + i) % ids.length];
                 try {
-                    await this.checkUser(id);
+                    // checkUser returns true to abort the batch (e.g. after a 429).
+                    if (await this.checkUser(id)) break;
                 } catch (e) {
                     log.warn(`Background avatar check failed for ${id}`, e);
                     if (this.stopped) return;
@@ -87,9 +98,10 @@ export class BackgroundSync {
                     continue;
                 }
                 if (this.stopped) return;
+                processed++;
                 await sleep(stagger);
             }
-            this.offset = (this.offset + size) % ids.length;
+            this.offset = (this.offset + processed) % ids.length;
         } catch (e) {
             log.info("Background avatar sweep aborted", e);
         } finally {

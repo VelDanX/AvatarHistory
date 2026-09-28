@@ -102,7 +102,7 @@ function AvatarLightbox({ userId, initialIndex, modalProps }: { userId: string; 
 
     const confirmClearHistory = (): void => {
         setConfirmClear(false);
-        void clearUserHistory(userId, true);
+        void clearUserHistory(userId);
         showToast("History cleared", Toasts.Type.SUCCESS);
     };
 

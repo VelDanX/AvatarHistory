@@ -23,7 +23,7 @@ export default definePlugin({
     name: "AvatarHistory",
     description: "Passively save avatar history of tracked users and browse it from their profile.",
     authors: [{ name: "VelDanX", id: 1348551557355933759n }],
-    version: "0.0.4",
+    version: "0.0.5",
     settings,
     dependencies: ["ProfileSectionsAPI"],
 
@@ -55,5 +55,6 @@ export default definePlugin({
     stop() {
         stopAvatarHistory();
         removeProfileSection("avatarHistory");
+        log.info("AvatarHistory stopped");
     },
 });

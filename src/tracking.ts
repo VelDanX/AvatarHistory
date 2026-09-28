@@ -155,27 +155,35 @@ export async function resetAndResync(): Promise<void> {
     }
 }
 
-export async function checkUserOnServer(userId: string): Promise<void> {
-    if (!shouldTrack(userId)) return;
+/**
+ * Re-check one user's avatar against the API.
+ * Returns true when the caller should abort the current sweep batch
+ * (rate limited — BackgroundSync.pause() has already been invoked).
+ */
+export async function checkUserOnServer(userId: string): Promise<boolean> {
+    if (!shouldTrack(userId)) return false;
     try {
         const res: any = await RestAPI.get({ url: Constants.Endpoints.USER(userId) });
 
         if (res?.status === 429) {
             const waitSeconds = Math.min(Number(res?.body?.retry_after ?? 5), 30);
-            // Pause the whole sweep instead of sleeping inside the loop.
+            // Pause the whole sweep instead of sleeping inside the loop — and abort
+            // the batch, otherwise every next user in it gets a 429 of its own.
             backgroundSync?.pause(waitSeconds * 1000);
-            return;
+            return true;
         }
         const user = res?.body ?? res;
-        if (!user || user.id !== userId || typeof user.avatar !== "string") return;
+        if (!user || user.id !== userId || typeof user.avatar !== "string") return false;
 
         const newest = getHistory(userId)[0];
-        if (newest && newest.hash === user.avatar) return;
+        if (newest && newest.hash === user.avatar) return false;
 
         // Record directly — no synthetic USER_UPDATE dispatch into Flux.
         recordUserIfChanged(user);
+        return false;
     } catch (e) {
         log.warn(`Background avatar check failed for ${userId}`, e);
+        return false;
     }
 }
 

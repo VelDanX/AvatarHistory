@@ -4,10 +4,6 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-export interface AvatarFileFormat {
-    format: "png" | "gif" | "webp";
-}
-
 /**
  * Builds a Discord CDN URL for an avatar, optionally an archived one.
  * Archived avatars live under `/avatars/:userId:/archived/:avatarId:/` —

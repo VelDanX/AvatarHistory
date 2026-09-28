@@ -17,9 +17,18 @@ const PREVIEW_COUNT = 4;
 function ProfileThumb({ userId, rec, index }: { userId: string; rec: AvatarRecord; index: number }) {
     const [blobUrl, setBlobUrl] = useState<string | null>(null);
 
+    // Deliberately no `hasBlob` guard: getBlobObjectUrl -> fetchAvatarBlob fetches
+    // from the CDN and persists the copy when it is missing, so simply opening a
+    // profile repairs records that were captured without an offline copy — while
+    // the CDN still serves them.
     useEffect(() => {
-        if (!rec.hasBlob) return;
-        void getBlobObjectUrl(userId, rec).then(url => setBlobUrl(url));
+        let cancelled = false;
+        void getBlobObjectUrl(userId, rec).then(url => {
+            if (!cancelled) setBlobUrl(url);
+        });
+        return () => {
+            cancelled = true;
+        };
     }, [userId, rec.hash, rec.hasBlob]);
 
     return (
