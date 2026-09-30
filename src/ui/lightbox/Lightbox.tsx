@@ -88,10 +88,9 @@ function AvatarLightbox({ userId, initialIndex, modalProps }: { userId: string; 
 
     const isSelf = userId === UserStore.getCurrentUser().id;
 
-    // Single source of truth for confirm actions — invoked ONLY from the
-    // buttons' onClick handlers. (Previously these fired twice: once via a
-    // capture-phase window click listener on [data-confirm], once via the
-    // React onClick, producing duplicate deletes and toasts.)
+    // Single source of truth for confirm actions, invoked ONLY from the buttons'
+    // onClick. (These used to fire twice: a capture-phase window click listener
+    // on [data-confirm] plus the React onClick.)
     const confirmDeleteRecord = (): void => {
         const r = recRef.current;
         setConfirmDelete(false);

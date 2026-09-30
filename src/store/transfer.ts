@@ -8,15 +8,15 @@ import { get, set } from "@api/DataStore";
 import { Logger } from "@utils/Logger";
 
 import { BLOB_BUDGET_BYTES } from "../config";
-import { applyBlobMeta, blobToDataUrl } from "./blobs";
+import { blobToDataUrl, measureIfNeeded } from "./blobs";
 import { getHistory, getLastSeenAt, history, notifyListeners, persistHistory, updateRecord } from "./history";
 import { AvatarRecord, blobKeyFor, sameHash } from "./types";
 
 const log = new Logger("AvatarHistory");
 
-/** On-disk export format version. Bumped independently of HISTORY_VERSION:
- * the file deliberately keeps the flat `Record<userId, AvatarRecord[]>` shape so
- * it stays readable by older builds and carries no local bookkeeping. */
+/** On-disk export format version. Bumped independently of HISTORY_VERSION: the
+ *  file keeps the flat `Record<userId, AvatarRecord[]>` shape so older builds can
+ *  read it, and carries no local bookkeeping. */
 export const EXPORT_VERSION = 1;
 
 export async function exportHistory(): Promise<Blob> {
@@ -88,9 +88,8 @@ export async function parseImport(data: string): Promise<number> {
                 const blob = await (await fetch(dataUrl)).blob();
                 if (blob.size <= BLOB_BUDGET_BYTES) {
                     await set(blobKeyFor(userId, rec.hash), blob);
-                    rec.hasBlob = true;
-                    applyBlobMeta(userId, rec, blob);
-                    updateRecord(userId, rec);
+                    measureIfNeeded(userId, rec, blob);
+                    updateRecord(userId, rec, { hasBlob: true, size: blob.size });
                 }
             } catch (e) {
                 log.debug("parseImport blob decode failed", userId, rec.hash, e);

@@ -44,9 +44,8 @@ export default definePlugin({
             if (!user?.avatar || !settings.store.trackSelf) return;
             void recordUserAvatar(user);
         },
-        // Guild member data arrives without any rendering: role/nick/username
-        // changes and lazy-loaded member lists both carry the current avatar
-        // hash, so a swap is visible before that avatar is ever on screen.
+        // Guild member data carries the current avatar hash without any
+        // rendering, so a swap is visible before that avatar hits the screen.
         GUILD_MEMBER_UPDATE({ user }: { user?: Partial<User> }) {
             recordUserIfChanged(user);
         },

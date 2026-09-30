@@ -61,9 +61,8 @@ export class BackgroundSync {
 
     private async sweep(sizeOverride?: number, staggerOverride?: number): Promise<void> {
         if (this.sweeping || this.stopped) return;
-        // Paused (e.g. after a 429): reschedule *before* bailing out. The pending
-        // timer is already consumed at this point, so returning without a new one
-        // would kill the sweep chain until the next plugin restart.
+        // Reschedule *before* bailing out: the pending timer is already consumed
+        // here, so returning without a new one would kill the sweep chain.
         if (Date.now() < this.pausedUntil) {
             this.scheduleNext();
             return;
@@ -75,16 +74,15 @@ export class BackgroundSync {
             if (!ids.length) return;
 
             const intervalMs = this.getIntervalMs();
-            // Pace the batch to the interval: at most interval/stagger users per
-            // sweep. A hard floor here would defeat pacing — a 30s interval with a
-            // 1500ms stagger is 20 users, not 100 requests in a row.
+            // Pace the batch to the interval (at most interval/stagger users); a
+            // hard floor would defeat pacing — a 30s interval with a 1500ms
+            // stagger is 20 users, not 100 in a row.
             const cap = Math.max(1, Math.floor(intervalMs / this.staggerMs));
             const size = Math.min(sizeOverride ?? cap, ids.length);
             for (let i = 0; i < size; i++) {
                 if (this.stopped) return;
-                // Ids arrive stalest-first (see sweepTargetIds), so the head of
-                // the list is always whoever has gone longest unconfirmed —
-                // checking them pushes them to the back, no rotation needed.
+                // Ids arrive stalest-first (sweepTargetIds), so the head is always
+                // the longest-unconfirmed user — no rotation needed.
                 const id = ids[i];
                 try {
                     // checkUser returns true to abort the batch (e.g. after a 429).

@@ -11,8 +11,8 @@ import { AvatarRecord, buildAvatarUrl, getBlobObjectUrl } from "../../store";
 
 const cl = classNameFactory("vc-avh-");
 
-/** Prefers the stored offline copy, falls back to the CDN. Opening the rail also
- * back-fills copies for records captured without one (see ProfileThumb). */
+/** Prefers the stored copy, falls back to the CDN. Opening the rail also
+ *  back-fills copies for records captured without one (see ProfileThumb). */
 function RailThumb({
     userId,
     rec,
@@ -53,9 +53,9 @@ function RailThumb({
             data-thumb="true"
             onClick={onSelect}
             onKeyDown={e => {
-                // Enter/Space only. Arrow keys are left to the lightbox-level
-                // handler in useLightboxState — handling them here too would
-                // move two avatars per press once a thumb takes focus.
+                // Enter/Space only. Arrows are left to the lightbox-level handler
+                // in useLightboxState — handling them here too would move two
+                // avatars per press once a thumb takes focus.
                 if (e.key === "Enter" || e.key === " ") {
                     e.preventDefault();
                     onSelect();

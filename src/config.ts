@@ -14,11 +14,14 @@ export const SEEN_LIMIT = 10_000;
 export const CDN_HEAD_TIMEOUT_MS = 5_000;
 
 /**
- * Abort timeout for downloading an avatar blob. Generous compared to the HEAD
- * check: the body transfer has to actually finish, and an animated avatar can
- * be a few MB. It still has to exist — an unbounded fetch that hangs leaves its
- * key in `pendingBlobs` forever, and every later caller is handed the dead
- * promise, so that avatar is never downloaded again for the rest of the session.
+ * Abort timeout for downloading an avatar blob, per URL — so a record with an
+ * avatarId (two URL shapes) can take up to 2x this. Generous vs the HEAD check
+ * because the body transfer has to actually finish and an animated avatar can
+ * be a few MB.
+ *
+ * It still has to exist: an unbounded fetch that hangs leaves its key in
+ * `pendingBlobs` forever and every later caller gets that dead promise, so the
+ * avatar is never downloaded again for the rest of the session.
  */
 export const BLOB_FETCH_TIMEOUT_MS = 20_000;
 

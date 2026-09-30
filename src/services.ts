@@ -23,12 +23,8 @@ import {
 
 const log = new Logger("AvatarHistory");
 
-/**
- * Owns the plugin's background machinery: settings migration, the recent-avatar
- * sniffer, the periodic sweep and the one-time store bootstrap (self tracking,
- * gap fill, CDN purge). Returns once everything is wired up; index.tsx just
- * calls start/stop.
- */
+/** Owns the plugin's background machinery: settings migration, the sniffer, the
+ *  periodic sweep and the one-time store bootstrap. */
 export function startAvatarHistory(): void {
     migratePollIntervalSetting();
 
@@ -50,8 +46,8 @@ export function startAvatarHistory(): void {
         resolveReady();
         const self = UserStore.getCurrentUser();
         void pullRecentFromServer();
-        // Self only: other users' records are still copy-less back-fill candidates,
-        // and purgeInvalidRecords would eat the ones whose CDN copy is already gone.
+        // Self only: other users' records are still back-fill candidates, and
+        // purgeInvalidRecords would eat the ones whose CDN copy is already gone.
         if (self) void purgeInvalidRecords(self.id);
     });
 }
@@ -60,7 +56,6 @@ export function stopAvatarHistory(): void {
     stopRecentSync();
     stopBackgroundSync();
     clearBlobUrls();
-    // A sweep may have touched lastSeenAt moments before shutdown; don't lose
-    // those watermarks to the coalescing timer.
+    // A sweep may have touched lastSeenAt moments before shutdown.
     void flushLastSeen();
 }

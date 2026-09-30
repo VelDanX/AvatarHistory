@@ -29,8 +29,8 @@ let storeWasReady = false;
 const seen = new Set<string>();
 let lastResourceIndex = 0;
 
-// Remembers the last scanned src/srcset signature per <img> so the periodic
-// sweep skips images whose URL did not change since the previous pass.
+// Remembers the last src/srcset signature per <img> so the sweep can skip images
+// whose URL did not change since the previous pass.
 const lastScannedSignature = new WeakMap<HTMLImageElement, string>();
 
 function manageSeenLimit(): void {
@@ -79,13 +79,12 @@ export async function recordHash(userId: string, hash: string, avatarId?: string
         if (avatarId && known.avatarId !== avatarId) {
             updateRecord(userId, known, { avatarId });
         }
-        // Repair: the avatar is on screen right now, so the CDN still serves it.
-        // That is our only chance to keep an offline copy before the hash is gone.
+        // Repair: the avatar is on screen now, so this is the last chance to
+        // keep a copy before the hash is gone.
         const current = getHistory(userId).find(r => sameHash(r.hash, known.hash)) ?? known;
         if (!current.hasBlob) void fetchAvatarBlob(userId, current);
-        // A hit without an avatarId is the live avatar → a confirmation.
-        // An `archived/<id>/` hit is a past avatar and says nothing about the
-        // user's current one, so it must not refresh the watermark.
+        // A hit without an avatarId is the live avatar → a confirmation; an
+        // `archived/<id>/` hit says nothing about the user's current one.
         if (!avatarId) setLastSeen(userId);
         return;
     }
@@ -96,12 +95,11 @@ export async function recordHash(userId: string, hash: string, avatarId?: string
         seen.delete(key);
         return;
     }
-    // exists === null (network inconclusive): record optimistically — purge will
-    // clean it up later if it really doesn't exist.
+    // exists === null: record optimistically, purge cleans up if it really
+    // does not exist.
     await recordAvatarSeen(userId, rec);
-    // Keep a local copy right away. A record without a blob is only a CDN link,
-    // and Discord drops those hashes eventually — after that the avatar is gone
-    // for good, history entry or no history entry.
+    // Keep a local copy right away: a record without a blob is only a CDN link,
+    // and Discord drops those hashes eventually.
     void fetchAvatarBlob(userId, rec);
     if (!avatarId) setLastSeen(userId);
     found++;
@@ -154,11 +152,9 @@ function installObserver(): void {
     observer = new MutationObserver(muts => {
         for (const mut of muts) {
             if (mut.type === "attributes") {
-                // Inline styles churn constantly (animations, hover states), and
-                // handleNode walks the subtree's <img> list. The style value has
-                // to name a background url for that walk to be able to find an
-                // avatar, so filter here instead of paying for it on every
-                // animation frame. src/srcset stay unfiltered.
+                // Inline styles churn constantly and handleNode walks the subtree's
+                // <img> list, so require a background url( first. src/srcset stay
+                // unfiltered.
                 if (mut.attributeName === "style") {
                     // `mut.target` is typed as Node; an attribute mutation is
                     // always on an element.

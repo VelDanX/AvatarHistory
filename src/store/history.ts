@@ -9,10 +9,8 @@ import { Logger } from "@utils/Logger";
 import { React } from "@webpack/common";
 
 import { SEEN_FLUSH_INTERVAL_MS } from "../config";
-// NOTE: intentional cycle history <-> blobs. Both modules only reference each
-// other's *function declarations* at runtime — nothing executes at module
-// evaluation time, so ESM handles this fine. Do not "fix" by inlining or
-// moving state; add a comment here instead if the cycle changes.
+// Intentional cycle history <-> blobs. Both modules only reference each other's
+// function declarations at runtime, so ESM handles it. Do not "fix" by inlining.
 import { revokeBlobObjectUrl } from "./blobs";
 import {
     AvatarHistory,
@@ -33,10 +31,7 @@ export let trackedUsers = new Set<string>();
 
 const EMPTY_HISTORY: AvatarRecord[] = [];
 
-/**
- * Read-only access to a user's history. Does NOT create an empty entry in the
- * store — viewing a profile must not pollute `history` with `userId: {}`.
- */
+/** Read-only: does not create an entry, so viewing a profile cannot pollute the store. */
 export function getHistory(userId: string): AvatarRecord[] {
     return history[userId]?.records ?? [];
 }
@@ -51,17 +46,30 @@ export function isTracked(userId: string): boolean {
 }
 
 /**
- * Replace a record inside a user's history with an immutable update (new array,
- * new record object). This is what makes `useSyncExternalStore` notice changes.
+ * Immutable update (new array, new record) — this is what makes
+ * useSyncExternalStore notice.
+ *
+ * `patch` is required on purpose. Records are replaced wholesale, so an async
+ * caller can hold a reference that is no longer in the array; hash is the
+ * per-user identity, so we fall back to it and apply the patch over the *live*
+ * record. Spreading the stale one instead would resurrect fields it has moved on
+ * from. Requiring the patch means a caller can never silently lose an in-place
+ * mutation to a record that went stale during an await — that is the only way to
+ * write, so `records` is never mutated outside a freshly built import record.
  */
-export function updateRecord(userId: string, rec: AvatarRecord, patch?: Partial<AvatarRecord>): void {
+export function updateRecord(userId: string, rec: AvatarRecord, patch: Partial<AvatarRecord>): void {
     const entry = history[userId];
     if (!entry) return;
-    const i = entry.records.indexOf(rec);
+    const i = entry.records.findIndex(r => r === rec || sameHash(r.hash, rec.hash));
     if (i === -1) return;
-    const next = entry.records.slice();
-    next[i] = patch ? { ...rec, ...patch } : { ...rec };
-    history[userId] = { records: next, lastSeenAt: entry.lastSeenAt };
+    const base = entry.records[i];
+    writeRecord(userId, entry, i, { ...base, ...patch });
+}
+
+function writeRecord(userId: string, entry: UserHistory, i: number, next: AvatarRecord): void {
+    const records = entry.records.slice();
+    records[i] = next;
+    history[userId] = { records, lastSeenAt: entry.lastSeenAt };
     void persistHistory();
     notifyListeners();
 }
@@ -91,13 +99,9 @@ function toUserHistory(value: unknown): UserHistory | null {
     return { records, lastSeenAt: typeof lastSeenAt === "number" ? lastSeenAt : 0 };
 }
 
-/**
- * Accepts every shape the store has ever held and returns the v2 form:
- * v2 `{ version: 2, users: { id: { records, lastSeenAt } } }`,
- * v1 `{ version: 1, users: { id: AvatarRecord[] } }`,
- * v0 a bare `{ id: AvatarRecord[] }` (Discord IDs are numeric, so a literal
- * "users" key cannot collide with a real user).
- */
+/** Accepts every shape the store has held and returns v2. v0 is a bare
+ *  `{ id: AvatarRecord[] }` — Discord IDs are numeric, so a literal "users" key
+ *  cannot collide with a real user. */
 function migrateStoredHistory(raw: unknown): AvatarHistory | undefined {
     if (!raw || typeof raw !== "object") return undefined;
     const source = "users" in raw ? (raw as { users: unknown }).users : raw;
@@ -117,8 +121,7 @@ export async function loadStore(): Promise<void> {
     const users = migrateStoredHistory(h);
     if (users) {
         for (const [userId, entry] of Object.entries(users)) history[userId] = entry;
-        // Rewrite once so the next start reads v2 directly instead of
-        // re-migrating on every launch.
+        // Rewrite once so the next start reads v2 directly.
         await persistHistory();
     }
     if (t) trackedUsers = new Set(t.filter(id => typeof id === "string" && id));
@@ -129,15 +132,12 @@ export async function loadStore(): Promise<void> {
 let seenDirty = false;
 let seenFlushTimer: ReturnType<typeof setTimeout> | null = null;
 
-/**
- * Note that we just confirmed a user's current avatar. Persisting every call
- * would rewrite the entire history once per user per sweep, so writes are
- * coalesced: in-memory immediately, flushed at most once per interval.
- */
+/** Confirms a user's current avatar. Writes are coalesced: in memory immediately,
+ *  flushed at most once per interval. */
 export function setLastSeen(userId: string, at = Date.now()): void {
     const entry = history[userId];
     if (!entry || entry.lastSeenAt === at) return;
-    // Mutating in place is safe: the records array reference is untouched, so
+    // Safe to mutate in place: the records array reference is untouched, so
     // useSyncExternalStore snapshots stay stable and don't re-render.
     entry.lastSeenAt = at;
     seenDirty = true;
@@ -148,8 +148,7 @@ export function setLastSeen(userId: string, at = Date.now()): void {
     }, SEEN_FLUSH_INTERVAL_MS);
 }
 
-/** Writes any pending `lastSeenAt` updates. Call on plugin stop so a session
- * ending right after a sweep still persists its watermark. */
+/** Flushes pending `lastSeenAt` updates. Called on plugin stop. */
 export async function flushLastSeen(): Promise<void> {
     if (seenFlushTimer != null) {
         clearTimeout(seenFlushTimer);
@@ -200,13 +199,11 @@ export async function recordAvatarSeen(userId: string, rec: AvatarRecord): Promi
     const recs = entry?.records ?? [];
     const existing = recs.find(r => sameHash(r.hash, rec.hash));
     if (existing) {
-        // Rewriting the timestamp keeps the record at its current index, so the
-        // descending order has to be restored explicitly — otherwise an older
-        // observation of the newest record drops it to the bottom of the list.
+        // Rewriting the timestamp keeps the record at its index, so the descending
+        // order has to be restored or the newest record drops to the bottom.
         if (rec.timestamp < existing.timestamp) {
             // One pass, one notify: `updateRecord` already persists and notifies,
-            // so a sort on top of it would render twice and leave the new order
-            // unpersisted until the next flush.
+            // so sorting on top would render twice and leave the order unpersisted.
             const i = recs.indexOf(existing);
             const patched = { ...existing, timestamp: rec.timestamp };
             const next = recs.slice();
@@ -236,13 +233,11 @@ export async function removeRecord(userId: string, rec: AvatarRecord): Promise<v
     notifyListeners();
 }
 
-/** Drops a user's whole history. Blobs always go with it — a blob whose record
- * is gone is unreachable and would sit in IndexedDB forever. */
+/** Drops a user's whole history, blobs included — an orphaned blob is unreachable. */
 export async function clearUserHistory(userId: string): Promise<void> {
     const recs = getHistory(userId);
     if (!recs.length) return;
-    // lastSeenAt goes with the entry: a user with no records has nothing to
-    // confirm, and the sweep will recreate the entry on the next check.
+    // lastSeenAt goes with the entry: with no records there is nothing to confirm.
     await delMany(recs.map(r => blobKeyFor(userId, r.hash)));
     for (const r of recs) revokeBlobObjectUrl(userId, r);
     delete history[userId];
@@ -268,9 +263,8 @@ export async function resetAllHistory(): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
-// React bindings (useSyncExternalStore) — snapshot must return a stable
-// reference while nothing changed, hence the EMPTY_* constants and the
-// immutable updates in updateRecord/recordAvatarSeen above.
+// React bindings. Snapshots must stay referentially stable while nothing changes,
+// hence EMPTY_HISTORY and the immutable updates above.
 // ---------------------------------------------------------------------------
 
 export function useHistory(userId: string): AvatarRecord[] {

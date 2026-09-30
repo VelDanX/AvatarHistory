@@ -14,11 +14,8 @@ const cl = classNameFactory("vc-avh-");
 /** Minimum distance from the screen edge before a click navigates the lightbox. */
 const CLICK_ZONE_MARGIN = 180;
 
-/**
- * Everything from the old AvatarLightbox body that is pure state/behavior:
- * the current index, the history records, the shared refs and the global
- * keydown (Esc/arrows) + pointerdown (click zones) subscriptions.
- */
+/** Current index, records, shared refs, and the global Esc/arrow + click-zone
+ *  subscriptions. */
 export function useLightboxState(userId: string, initialIndex: number, onClose: () => void) {
     const [index, setIndex] = useState(initialIndex);
     const recs = useHistory(userId);
@@ -32,8 +29,8 @@ export function useLightboxState(userId: string, initialIndex: number, onClose: 
     const keySinkRef = useRef<HTMLDivElement | null>(null);
     const touchX = useRef<number | null>(null);
 
-    // Stable registration callback so the rail can hand the active thumbnail
-    // up without re-attaching the ref on every render.
+    // Stable so the rail can hand the active thumbnail up without re-attaching
+    // the ref each render.
     const registerActiveRef = useCallback((el: HTMLImageElement | null): void => {
         activeRef.current = el;
     }, []);

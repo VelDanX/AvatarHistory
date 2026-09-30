@@ -26,12 +26,9 @@ export const defaultCdnExistsChecker: CdnExistsChecker = (userId, hash, formats,
     checkCdnExists(userId, hash, formats, avatarId);
 
 /**
- * Tri-state CDN check:
- *  - true  — confirmed: the URL returns an actual image
- *  - false — confirmed missing / not an image
- *  - null  — inconclusive (network error, timeout, 5xx) — callers must decide:
- *            recording flow treats it as "record optimistically", purge flow
- *            treats it as "keep the record".
+ * Tri-state CDN check: true = confirmed image, false = confirmed missing,
+ * null = inconclusive (network error, timeout, 5xx). On null the recording flow
+ * records optimistically and the purge flow keeps the record.
  */
 export async function checkCdnExists(userId: string, hash: string, formats: Array<"png" | "gif" | "webp">, avatarId?: string): Promise<boolean | null> {
     const key = `${userId}:${hash}:${avatarId ?? ""}`;
@@ -66,10 +63,9 @@ export async function cdnAvatarExists(userId: string, hash: string, formats: Arr
                 }
                 const ct = (res.headers.get("Content-Type") ?? "").toLowerCase();
                 if (!ct.startsWith("image/")) return false;
-                // No size floor here: Discord serves its error bodies as
-                // application/json, which the content-type check above already
-                // rejects, while a real avatar can compress below 1 kB. Refusing
-                // small images would make the purge delete valid records.
+                // No size floor: Discord serves its error bodies as application/json,
+                // which the check above already rejects, and a real avatar can
+                // compress below 1 kB.
                 return true;
             } catch {
                 // Timeout / abort / network failure — inconclusive.
@@ -85,8 +81,8 @@ export async function purgeInvalidRecords(userId: string, checker: CdnExistsChec
     let removed = 0;
     for (const rec of recs) {
         const formats: Array<"png" | "gif" | "webp"> = rec.format === "gif" ? ["gif", "webp"] : ["png", "webp", "gif"];
-        // Only remove when the CDN check is *definitively* negative — never
-        // delete a valid record because of a flaky network.
+        // Only remove on a definitively negative check — never drop a valid
+        // record over a flaky network.
         if ((await checker(userId, rec.hash, formats, rec.avatarId)) !== false) continue;
         await removeRecord(userId, rec);
         removed++;

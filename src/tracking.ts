@@ -52,9 +52,8 @@ export async function recordUserAvatar(user: User): Promise<void> {
     if (!user.avatar) return;
     const rec = buildRecord(user.avatar);
     const known = getHistory(user.id).some(r => sameHash(r.hash, rec.hash));
-    // Only CDN-verify avatars we haven't recorded yet. checkCdnExists is
-    // tri-state: false = confirmed missing, null = network inconclusive
-    // (record optimistically; purge will clean up later).
+    // checkCdnExists is tri-state: false = confirmed missing, null = inconclusive
+    // (record optimistically; purge cleans up later).
     if (!known) {
         const formats: Array<"png" | "gif" | "webp"> = rec.format === "gif" ? ["gif", "webp", "png"] : ["png", "webp", "gif"];
         let ok = await checkCdnExists(user.id, rec.hash, formats);
@@ -68,20 +67,16 @@ export async function recordUserAvatar(user: User): Promise<void> {
         }
     }
     await recordAvatarSeen(user.id, rec);
-    // We have just seen this hash on a live user object — that's a confirmation,
-    // whether the record was new or already known.
+    // A hash seen on a live user object is a confirmation, new or known.
     setLastSeen(user.id);
     const newest = getHistory(user.id)[0];
     if (newest) void fetchAvatarBlob(user.id, newest);
 }
 
 export function shouldTrack(userId: string): boolean {
-    // Self is decided by the toggle alone, and *before* the tracked set is
-    // consulted. startAvatarHistory() adds self to trackedUsers whenever
-    // trackSelf is on, and nothing removed it again, so an `isTracked()`
-    // shortcut here made the toggle a one-way switch: switching it off left
-    // the set entry behind and every later call returned true, so the sniffer
-    // and USER_UPDATE kept writing history for a user who had opted out.
+    // Self is decided by the toggle alone, before the tracked set is consulted:
+    // startAvatarHistory() adds self and nothing removed it again, so an
+    // `isTracked()` shortcut made the toggle a one-way switch.
     const self = UserStore.getCurrentUser();
     if (self && userId === self.id) return settings.store.trackSelf;
     if (isTracked(userId)) return true;
@@ -92,14 +87,9 @@ export function isAnyTrackingActive(): boolean {
     return settings.store.trackSelf || settings.store.trackFriends || trackedUsers.size > 0;
 }
 
-/**
- * Interval used for the background re-checks, in ms.
- *
- * Pure function of the settings and the tracked set: it reads the typed
- * reactive store and never writes to it, so a sweep leaves no trace on disk.
- * The Auto value is derived (see poll.ts); `pollIntervalSeconds` is the user's
- * own number and only means anything in Manual mode.
- */
+/** Background sweep interval, ms. Pure function of the settings: the Auto value
+ *  is derived (poll.ts) and never written back, so `pollIntervalSeconds` stays
+ *  the user's own number. */
 function resolvePollIntervalMs(): number {
     if (settings.store.pollIntervalMode === "manual") {
         const seconds = settings.store.pollIntervalSeconds;
@@ -123,10 +113,8 @@ export async function fillHistoryGaps(): Promise<void> {
         if (self && id === self.id) continue;
         const user = UserStore.getUser(id);
         if (!user?.avatar) continue;
-        // Nothing to do when the cached avatar is already our newest record.
-        // Skipping the call (and the stagger) is what keeps startup free for
-        // large friend lists — a 300ms sleep per already-known user is ~90s of
-        // serialized no-op work on every launch.
+        // Skipping the call (and the stagger) keeps startup free: 300ms per
+        // already-known user is ~90s of no-op work on a 300-friend list.
         if (getHistory(id)[0]?.hash && sameHash(getHistory(id)[0].hash, user.avatar)) {
             setLastSeen(id);
             continue;
@@ -141,8 +129,7 @@ export async function resetAndResync(): Promise<void> {
     await resetAllHistory();
     Toasts.show({ message: "AvatarHistory: history cleared", type: Toasts.Type.SUCCESS, id: Toasts.genId() });
     if (settings.store.trackSelf && self) {
-        // resetAllHistory also clears the tracked set — restore self so the
-        // UI/tracked overview stays consistent without a plugin restart.
+        // resetAllHistory also cleared the tracked set — restore self.
         await setTracked(self.id, true);
         const added = await pullRecentFromServer();
         void purgeInvalidRecords(self.id);
@@ -150,11 +137,8 @@ export async function resetAndResync(): Promise<void> {
     }
 }
 
-/**
- * Re-check one user's avatar against the API.
- * Returns true when the caller should abort the current sweep batch
- * (rate limited — BackgroundSync.pause() has already been invoked).
- */
+/** Re-checks one user against the API. Returns true to abort the batch
+ *  (rate limited; BackgroundSync.pause() already invoked). */
 export async function checkUserOnServer(userId: string): Promise<boolean> {
     if (!shouldTrack(userId)) return false;
     try {
@@ -174,10 +158,9 @@ export async function checkUserOnServer(userId: string): Promise<boolean> {
         recordUserIfChanged(user);
         return false;
     } catch (e) {
-        // Discord's REST layer *rejects* on error status codes rather than
-        // resolving with them, so a 429 lands here and not on the branch above
-        // — which is why both paths have to handle it. Without this, every
-        // remaining user in the batch would earn a 429 of its own.
+        // Discord's REST layer *rejects* on error statuses rather than resolving
+        // with them, so a 429 lands here and not on the branch above — both paths
+        // must handle it, or every remaining user earns a 429 of its own.
         const err = e as { status?: number; body?: { retry_after?: number; } } | undefined;
         if (err?.status === 429) return onRateLimited(err);
         log.warn(`Background avatar check failed for ${userId}`, e);
@@ -185,8 +168,7 @@ export async function checkUserOnServer(userId: string): Promise<boolean> {
     }
 }
 
-/** Shared 429 handling: pause the sweep instead of sleeping inside the loop,
- * and tell the caller to abandon the rest of the batch. */
+/** Shared 429 handling: pause the sweep instead of sleeping in the loop, and tell the caller to abandon the batch. */
 function onRateLimited(payload: { body?: { retry_after?: number; } }): true {
     const waitSeconds = Math.min(Number(payload?.body?.retry_after ?? 5), 30);
     backgroundSync?.pause(waitSeconds * 1000);

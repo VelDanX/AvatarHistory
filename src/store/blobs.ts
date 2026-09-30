@@ -9,8 +9,7 @@ import { Logger } from "@utils/Logger";
 
 import { buildAvatarUrl } from "../cdnUrl";
 import { BLOB_BUDGET_BYTES, BLOB_FETCH_TIMEOUT_MS } from "../config";
-// NOTE: intentional cycle with ./history (see the mirrored note there).
-// Runtime-only usage of hoisted function declarations — safe under ESM.
+// Intentional cycle with ./history: runtime-only use of hoisted declarations, safe under ESM.
 import { updateRecord } from "./history";
 import { AvatarRecord, blobKeyFor } from "./types";
 
@@ -29,8 +28,8 @@ export async function fetchAvatarBlob(userId: string, rec: AvatarRecord): Promis
             const cached = await get<Blob>(key);
             if (cached) {
                 // A blob read back out of the store is a real persisted copy.
-                rec.hasBlob = true;
-                applyBlobMeta(userId, rec, cached);
+                measureIfNeeded(userId, rec, cached);
+                updateRecord(userId, rec, { hasBlob: true, size: cached.size });
                 return cached;
             }
             const urls = rec.avatarId
@@ -38,9 +37,9 @@ export async function fetchAvatarBlob(userId: string, rec: AvatarRecord): Promis
                 : [buildAvatarUrl(userId, rec.hash, rec.format, 512)];
             let blob: Blob | null = null;
             for (const url of urls) {
-                // Bounded: an unbounded request that never settles would keep its
-                // key in `pendingBlobs` for the rest of the session, and the
-                // dedup below would hand that dead promise to every later caller.
+                // Bounded: a request that never settles would pin its key in
+                // `pendingBlobs` for the session, and dedup would hand that dead
+                // promise to every later caller.
                 const control = new AbortController();
                 const timer = setTimeout(() => control.abort(), BLOB_FETCH_TIMEOUT_MS);
                 try {
@@ -57,31 +56,26 @@ export async function fetchAvatarBlob(userId: string, rec: AvatarRecord): Promis
                 }
             }
             if (!blob) return null;
-            // A 200 is not proof of an image. Storing an error page under a blob key
-            // would render as a permanently broken thumbnail that never re-fetches,
-            // so reject non-image bodies here instead of guessing from the size.
+            // A 200 is not proof of an image: storing an error page would become a
+            // permanently broken thumbnail that never re-fetches.
             const bt = (blob.type ?? "").toLowerCase();
             if (bt && !bt.startsWith("image/") && bt !== "application/octet-stream") {
                 log.debug("fetchAvatarBlob got a non-image body", userId, rec.hash, bt);
                 return null;
             }
-            // Metadata is recorded either way, including for an oversized blob:
-            // the size and dimensions are still known, and the caller gets a
-            // working object URL for this session. Only the *persisted copy* is
-            // skipped, since that is what the budget is about.
-            applyBlobMeta(userId, rec, blob);
+            // Metadata is recorded even for an oversized blob; only the *persisted
+            // copy* is skipped, since that is what the budget is about.
+            measureIfNeeded(userId, rec, blob);
             if (blob.size > BLOB_BUDGET_BYTES) {
-                // hasBlob deliberately stays false: nothing was written under the
-                // blob key. Leaving it true would make cdn.purgeInvalidRecords and
-                // the sniffer's repair pass skip the record forever, on the
-                // strength of a copy that does not exist.
+                // hasBlob stays false: nothing was written under the blob key, and
+                // marking it would make purgeInvalidRecords and the sniffer's
+                // repair pass skip the record forever.
                 log.debug(`Not caching oversized avatar blob (${blob.size} > ${BLOB_BUDGET_BYTES})`, userId, rec.hash);
-                updateRecord(userId, rec);
+                updateRecord(userId, rec, { size: blob.size });
                 return blob;
             }
             await set(key, blob);
-            rec.hasBlob = true;
-            updateRecord(userId, rec);
+            updateRecord(userId, rec, { hasBlob: true, size: blob.size });
             return blob;
         } catch (e) {
             log.debug("fetchAvatarBlob failed", userId, rec.hash, e);
@@ -118,11 +112,11 @@ export function clearBlobUrls(): void {
     blobObjectUrls.clear();
 }
 
-// Records what a blob *is* (size, dimensions). It deliberately does not touch
-// `hasBlob`: only the caller knows whether the blob was actually written under
-// the blob key, and an oversized blob is measured but never persisted.
-export function applyBlobMeta(userId: string, rec: AvatarRecord, blob: Blob): void {
-    rec.size = blob.size;
+// Starts an async decode to fill in `width`/`height` if they are still unknown,
+// and patches the result through updateRecord. It deliberately mutates nothing:
+// size and hasBlob travel in the caller's patch, so nothing is lost if `rec`
+// goes stale during the decode.
+export function measureIfNeeded(userId: string, rec: AvatarRecord, blob: Blob): void {
     if (!rec.width || !rec.height) void measureBlob(userId, rec, blob);
 }
 
@@ -155,8 +149,7 @@ export function blobToDataUrl(blob: Blob): Promise<string> {
 export async function avatarToDataUrl(userId: string, rec: AvatarRecord): Promise<string | null> {
     let blob = await fetchAvatarBlob(userId, rec);
     if (!blob) {
-        // Bounded for the same reason as above: this fallback runs behind a
-        // "set as avatar" click, and a hang there leaves the button spinning.
+        // Bounded for the same reason as above: a hang here leaves the button spinning.
         const control = new AbortController();
         const timer = setTimeout(() => control.abort(), BLOB_FETCH_TIMEOUT_MS);
         try {
