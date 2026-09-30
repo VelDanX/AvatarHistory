@@ -4,7 +4,6 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-import { PlainSettings } from "@api/Settings";
 import { Logger } from "@utils/Logger";
 import { User } from "@vencord/discord-types";
 import { Constants, RelationshipStore, RestAPI, Toasts, UserStore } from "@webpack/common";
@@ -12,16 +11,14 @@ import { Constants, RelationshipStore, RestAPI, Toasts, UserStore } from "@webpa
 import {
     CDN_RETRY_DELAY_MS,
     DEFAULT_POLL_INTERVAL_SECONDS,
-    GAP_FILL_STAGGER_MS,
-    MAX_POLL_INTERVAL_MS,
-    MIN_POLL_INTERVAL_MS
+    GAP_FILL_STAGGER_MS
 } from "./config";
+import { smartPollIntervalSeconds, sweepTargetIds } from "./poll";
 import { settings } from "./settings";
 import {
     AvatarRecord,
     fetchAvatarBlob,
     getHistory,
-    getLastSeenAt,
     getTrackedUsers,
     isTracked,
     recordAvatarSeen,
@@ -31,7 +28,7 @@ import {
     setTracked,
     trackedUsers
 } from "./store";
-import { BackgroundSync, DEFAULT_STAGGER_MS } from "./sync/bgSync";
+import { BackgroundSync } from "./sync/bgSync";
 import { checkCdnExists, purgeInvalidRecords } from "./sync/cdn";
 import { pullRecentFromServer } from "./sync/recentSync";
 
@@ -90,55 +87,24 @@ export function isAnyTrackingActive(): boolean {
 }
 
 /**
- * Target ids for the background sweep (friends + manually tracked, minus self),
- * ordered stalest-confirmation-first.
+ * Interval used for the background re-checks, in ms.
  *
- * Sorting by `lastSeenAt` replaces a rotating offset: a checked user moves to
- * the back automatically, so the list is self-balancing. That also makes the
- * sweep survive the client being closed — on the next launch nobody has been
- * confirmed recently, so the stalest users are checked first instead of whoever
- * happens to sit at the head of a static array.
+ * Pure function of the settings and the tracked set: it reads the typed
+ * reactive store and never writes to it, so a sweep leaves no trace on disk.
+ * The Auto value is derived (see poll.ts); `pollIntervalSeconds` is the user's
+ * own number and only means anything in Manual mode.
  */
-export function sweepTargetIds(): string[] {
-    const ids = new Set<string>();
-    if (settings.store.trackFriends) {
-        for (const id of RelationshipStore.getFriendIDs()) ids.add(id);
+function resolvePollIntervalMs(): number {
+    if (settings.store.pollIntervalMode === "manual") {
+        const seconds = settings.store.pollIntervalSeconds;
+        return (seconds > 0 ? seconds : DEFAULT_POLL_INTERVAL_SECONDS) * 1000;
     }
-    for (const id of trackedUsers) ids.add(id);
-    const self = UserStore.getCurrentUser();
-    if (self) ids.delete(self.id);
-    return [...ids].sort((a, b) => getLastSeenAt(a) - getLastSeenAt(b));
+    return smartPollIntervalSeconds(settings.store.trackFriends) * 1000;
 }
 
 async function getSweepIds(): Promise<string[]> {
     if (!settings.store.pollTracked) return [];
-    return sweepTargetIds();
-}
-
-function sweepUserCount(): number {
-    return sweepTargetIds().length;
-}
-
-function smartPollIntervalMs(): number {
-    const pacedMs = Math.max(1, sweepUserCount()) * DEFAULT_STAGGER_MS;
-    return Math.min(MAX_POLL_INTERVAL_MS, Math.max(MIN_POLL_INTERVAL_MS, pacedMs));
-}
-
-function resolvePollIntervalMs(): number {
-    const stored = PlainSettings.plugins.AvatarHistory as Record<string, unknown> | undefined;
-    const custom = typeof stored?.pollIntervalSeconds === "number" ? stored.pollIntervalSeconds : null;
-    const mode = stored?.pollIntervalMode;
-
-    if (mode === "manual") {
-        return (custom != null && custom > 0 ? custom : DEFAULT_POLL_INTERVAL_SECONDS) * 1000;
-    }
-
-    const seconds = Math.max(1, Math.round(smartPollIntervalMs() / 1000));
-    // Avoid markAsChanged/settings-write on every sweep when the value is stable.
-    if (settings.store.pollIntervalSeconds !== seconds) {
-        settings.store.pollIntervalSeconds = seconds;
-    }
-    return seconds * 1000;
+    return sweepTargetIds(settings.store.trackFriends);
 }
 
 export async function fillHistoryGaps(): Promise<void> {

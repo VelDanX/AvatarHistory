@@ -49,8 +49,8 @@ Vencord / Equicord userplugin that passively records avatar changes and lets you
 | trackSelf | ✔ | Track your own avatar changes |
 | trackFriends | ✘ | Auto-track avatar changes of all your friends |
 | pollTracked | ✔ | Periodically re-check tracked users' avatars in the background. If disabled, avatars of other tracked users only update when you view their profile |
-| pollIntervalMode | Auto | Interval mode: **Auto** tunes the re-check interval to the number of tracked users (30 s – 30 min); **Manual** shows a seconds input with the current interval pre-filled |
-| pollIntervalSeconds | 30 s (Manual only) | Fixed re-check interval in seconds — only shown when the mode is set to Manual |
+| pollIntervalMode | Auto | Interval mode: **Auto** tunes the re-check interval to the number of tracked users (30 s – 30 min); **Manual** shows a seconds input pre-filled with the interval Auto currently picks |
+| pollIntervalSeconds | 30 s (Manual only) | Fixed re-check interval in seconds — only shown when the mode is set to Manual. Auto never overwrites it; it is yours |
 
 The settings screen — toggles for tracking, a live overview of tracked users (avatars, names, source badges, copyable user IDs, per-user remove buttons) and the poll interval mode:
 
@@ -116,6 +116,7 @@ avatarHistory/
 │   ├── config.ts                   # Constants: copy budget, CDN timeout, intervals, CDN-URL marker
 │   ├── services.ts                 # Start/stop of the background machinery (sniffer, sweep, store load)
 │   ├── tracking.ts                 # The "should we track this user" decision and recording their avatar
+│   ├── poll.ts                     # Sweep targets + Auto interval math (pure: no settings writes)
 │   ├── contextMenu.tsx             # Menu items: remember avatar, track, sync, reset history
 │   ├── settings.tsx                # definePluginSettings + interval-setting migration
 │   ├── cdnUrl.ts                   # CDN avatar URL builder (regular and archived)
@@ -207,8 +208,8 @@ refactor cannot break the rest of the plugin.
 | trackSelf | ✔ | Отслеживать свой аватар |
 | trackFriends | ✘ | Автоотслеживание аватаров всех друзей |
 | pollTracked | ✔ | Периодически перепроверять аватарки отслеживаемых в фоне. Если выключено — аватарки других отслеживаемых обновляются только при просмотре их профиля |
-| pollIntervalMode | Auto | Режим интервала: **Auto** подстраивает интервал перепроверки под число отслеживаемых (30 с – 30 мин); **Manual** показывает поле ввода секунд с уже подставленным текущим интервалом |
-| pollIntervalSeconds | 30 с (только Manual) | Фиксированный интервал перепроверки в секундах — показывается только при режиме Manual |
+| pollIntervalMode | Auto | Режим интервала: **Auto** подстраивает интервал перепроверки под число отслеживаемых (30 с – 30 мин); **Manual** показывает поле ввода секунд, подставленное с тем интервалом, который Auto выбирает сейчас |
+| pollIntervalSeconds | 30 с (только Manual) | Фиксированный интервал перепроверки в секундах — показывается только в режиме Manual. Auto его не перезаписывает, это ваше значение |
 
 Экран настроек — тоглы отслеживания, живой обзор отслеживаемых (аватары, имена, бейджи источника, копируемые UserID, кнопки удаления каждого пользователя) и режим интервала проверки:
 
@@ -276,6 +277,7 @@ avatarHistory/
 │   ├── config.ts                   # Константы: бюджет копии, таймаут CDN, интервалы, маркер CDN-URL
 │   ├── services.ts                 # Старт/стоп фоновой машинерии (снайфер, опрос, загрузка стора)
 │   ├── tracking.ts                 # Решение «отслеживать ли пользователя» и запись его аватаров
+│   ├── poll.ts                     # Цели свипа и математика авто-интервала (чисто: без записи в настройки)
 │   ├── contextMenu.tsx             # Пункты меню: запомнить аватар, трекинг, синк, сброс истории
 │   ├── settings.tsx                # definePluginSettings + миграция настройки интервала
 │   ├── cdnUrl.ts                   # Сборка URL аватара на CDN (обычный и архивный)

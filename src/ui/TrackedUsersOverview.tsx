@@ -10,9 +10,9 @@ import { classNameFactory } from "@utils/css";
 import { copyWithToast } from "@utils/discord";
 import { FluxDispatcher, IconUtils, RelationshipStore, useEffect, useReducer,UserStore } from "@webpack/common";
 
+import { sweepTargetIds } from "../poll";
 import { settings } from "../settings";
 import { setTracked, subscribeTracked } from "../store";
-import { sweepTargetIds } from "../tracking";
 
 const cl = classNameFactory("vc-avh-");
 
@@ -34,7 +34,7 @@ export function TrackedUsersOverview() {
     }, []);
 
     const self = UserStore.getCurrentUser();
-    const ids = sweepTargetIds();
+    const ids = sweepTargetIds(settings.store.trackFriends);
     if (self && settings.store.trackSelf) ids.push(self.id);
 
     const entries = [...new Set(ids)].map(id => {
