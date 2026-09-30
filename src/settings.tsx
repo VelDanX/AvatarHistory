@@ -9,6 +9,11 @@ import { OptionType } from "@utils/types";
 
 import { DEFAULT_POLL_INTERVAL_MINUTES, DEFAULT_POLL_INTERVAL_SECONDS } from "./config";
 import { smartPollIntervalSeconds } from "./poll";
+// NOTE: intentional cycle settings <-> TrackedUsersOverview (the overview reads
+// settings.store to label its rows). Both sides only touch the other at runtime
+// — component render or an onChange callback, never at module evaluation — so
+// ESM handles it. Do not "fix" by moving the component out of this file; add a
+// comment here instead if the cycle changes. Same rule as store/history.ts.
 import { TrackedUsersOverview } from "./ui/TrackedUsersOverview";
 
 export const settings = definePluginSettings({

@@ -154,6 +154,17 @@ function installObserver(): void {
     observer = new MutationObserver(muts => {
         for (const mut of muts) {
             if (mut.type === "attributes") {
+                // Inline styles churn constantly (animations, hover states), and
+                // handleNode walks the subtree's <img> list. The style value has
+                // to name a background url for that walk to be able to find an
+                // avatar, so filter here instead of paying for it on every
+                // animation frame. src/srcset stay unfiltered.
+                if (mut.attributeName === "style") {
+                    // `mut.target` is typed as Node; an attribute mutation is
+                    // always on an element.
+                    const style = (mut.target as Element).getAttribute("style");
+                    if (!style?.includes("url(")) continue;
+                }
                 scheduleHandle(mut.target);
                 continue;
             }

@@ -200,8 +200,21 @@ export async function recordAvatarSeen(userId: string, rec: AvatarRecord): Promi
     const recs = entry?.records ?? [];
     const existing = recs.find(r => sameHash(r.hash, rec.hash));
     if (existing) {
+        // Rewriting the timestamp keeps the record at its current index, so the
+        // descending order has to be restored explicitly — otherwise an older
+        // observation of the newest record drops it to the bottom of the list.
         if (rec.timestamp < existing.timestamp) {
-            updateRecord(userId, existing, { timestamp: rec.timestamp });
+            // One pass, one notify: `updateRecord` already persists and notifies,
+            // so a sort on top of it would render twice and leave the new order
+            // unpersisted until the next flush.
+            const i = recs.indexOf(existing);
+            const patched = { ...existing, timestamp: rec.timestamp };
+            const next = recs.slice();
+            next[i] = patched;
+            next.sort((a, b) => b.timestamp - a.timestamp);
+            history[userId] = { records: next, lastSeenAt: entry.lastSeenAt };
+            await persistHistory();
+            notifyListeners();
         }
         return;
     }

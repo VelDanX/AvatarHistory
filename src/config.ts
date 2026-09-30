@@ -13,6 +13,15 @@ export const SEEN_LIMIT = 10_000;
 /** Abort timeout for a single CDN HEAD request. */
 export const CDN_HEAD_TIMEOUT_MS = 5_000;
 
+/**
+ * Abort timeout for downloading an avatar blob. Generous compared to the HEAD
+ * check: the body transfer has to actually finish, and an animated avatar can
+ * be a few MB. It still has to exist — an unbounded fetch that hangs leaves its
+ * key in `pendingBlobs` forever, and every later caller is handed the dead
+ * promise, so that avatar is never downloaded again for the rest of the session.
+ */
+export const BLOB_FETCH_TIMEOUT_MS = 20_000;
+
 /** How often the sniffer rescans resource timings / page images. */
 export const RESOURCE_SWEEP_INTERVAL_MS = 30_000;
 

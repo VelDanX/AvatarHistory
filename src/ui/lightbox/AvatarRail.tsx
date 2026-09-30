@@ -44,10 +44,23 @@ function RailThumb({
             className={cl("lb-thumb", active && "active")}
             src={blobUrl ?? buildAvatarUrl(userId, rec.hash, rec.format, 96, rec.avatarId)}
             alt=""
+            aria-label={`Avatar from ${new Date(rec.timestamp).toLocaleString()}`}
+            aria-current={active}
+            role="button"
+            tabIndex={0}
             loading="lazy"
             draggable={false}
             data-thumb="true"
             onClick={onSelect}
+            onKeyDown={e => {
+                // Enter/Space only. Arrow keys are left to the lightbox-level
+                // handler in useLightboxState — handling them here too would
+                // move two avatars per press once a thumb takes focus.
+                if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    onSelect();
+                }
+            }}
         />
     );
 }

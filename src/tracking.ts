@@ -76,9 +76,15 @@ export async function recordUserAvatar(user: User): Promise<void> {
 }
 
 export function shouldTrack(userId: string): boolean {
-    if (isTracked(userId)) return true;
+    // Self is decided by the toggle alone, and *before* the tracked set is
+    // consulted. startAvatarHistory() adds self to trackedUsers whenever
+    // trackSelf is on, and nothing removed it again, so an `isTracked()`
+    // shortcut here made the toggle a one-way switch: switching it off left
+    // the set entry behind and every later call returned true, so the sniffer
+    // and USER_UPDATE kept writing history for a user who had opted out.
     const self = UserStore.getCurrentUser();
     if (self && userId === self.id) return settings.store.trackSelf;
+    if (isTracked(userId)) return true;
     return settings.store.trackFriends && RelationshipStore.isFriend(userId);
 }
 
@@ -153,14 +159,8 @@ export async function checkUserOnServer(userId: string): Promise<boolean> {
     if (!shouldTrack(userId)) return false;
     try {
         const res: any = await RestAPI.get({ url: Constants.Endpoints.USER(userId) });
+        if (res?.status === 429) return onRateLimited(res);
 
-        if (res?.status === 429) {
-            const waitSeconds = Math.min(Number(res?.body?.retry_after ?? 5), 30);
-            // Pause the whole sweep instead of sleeping inside the loop — and abort
-            // the batch, otherwise every next user in it gets a 429 of its own.
-            backgroundSync?.pause(waitSeconds * 1000);
-            return true;
-        }
         const user = res?.body ?? res;
         if (!user || user.id !== userId || typeof user.avatar !== "string") return false;
 
@@ -174,9 +174,23 @@ export async function checkUserOnServer(userId: string): Promise<boolean> {
         recordUserIfChanged(user);
         return false;
     } catch (e) {
+        // Discord's REST layer *rejects* on error status codes rather than
+        // resolving with them, so a 429 lands here and not on the branch above
+        // — which is why both paths have to handle it. Without this, every
+        // remaining user in the batch would earn a 429 of its own.
+        const err = e as { status?: number; body?: { retry_after?: number; } } | undefined;
+        if (err?.status === 429) return onRateLimited(err);
         log.warn(`Background avatar check failed for ${userId}`, e);
         return false;
     }
+}
+
+/** Shared 429 handling: pause the sweep instead of sleeping inside the loop,
+ * and tell the caller to abandon the rest of the batch. */
+function onRateLimited(payload: { body?: { retry_after?: number; } }): true {
+    const waitSeconds = Math.min(Number(payload?.body?.retry_after ?? 5), 30);
+    backgroundSync?.pause(waitSeconds * 1000);
+    return true;
 }
 
 export function recordUserIfChanged(user?: Partial<User>): void {

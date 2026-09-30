@@ -563,6 +563,12 @@
     opacity: 1;
 }
 
+.vc-avh-lb-thumb:focus-visible {
+    opacity: 1;
+    outline: 2px solid var(--white-500);
+    outline-offset: 2px;
+}
+
 .vc-avh-lb-thumb.vc-avh-active {
     opacity: 1;
     border-color: var(--white-500);

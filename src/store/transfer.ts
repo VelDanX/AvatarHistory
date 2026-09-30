@@ -88,6 +88,7 @@ export async function parseImport(data: string): Promise<number> {
                 const blob = await (await fetch(dataUrl)).blob();
                 if (blob.size <= BLOB_BUDGET_BYTES) {
                     await set(blobKeyFor(userId, rec.hash), blob);
+                    rec.hasBlob = true;
                     applyBlobMeta(userId, rec, blob);
                     updateRecord(userId, rec);
                 }
