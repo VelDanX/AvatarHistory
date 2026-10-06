@@ -10,8 +10,15 @@ export const BLOB_BUDGET_BYTES = 10 * 1024 * 1024;
 /** Max entries in the sniffer's "already seen" dedup set. */
 export const SEEN_LIMIT = 10_000;
 
-/** Abort timeout for a single CDN HEAD request. */
-export const CDN_HEAD_TIMEOUT_MS = 5_000;
+/** Timeout for a single CDN existence probe (one <img> load attempt). */
+export const CDN_CHECK_TIMEOUT_MS = 5_000;
+
+/**
+ * How long a successful control-asset probe stays trusted before the CDN is
+ * checked again. The control answers "is the network up", so a cached answer
+ * older than this could turn a real outage into a string of false 404s.
+ */
+export const CDN_CONTROL_TTL_MS = 30_000;
 
 /**
  * Abort timeout for downloading an avatar blob, per URL — so a record with an

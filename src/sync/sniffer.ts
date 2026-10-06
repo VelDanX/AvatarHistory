@@ -92,7 +92,9 @@ export async function recordHash(userId: string, hash: string, avatarId?: string
     const exists = await checkCdnExists(userId, rec.hash, formats, avatarId);
     if (exists === false) {
         log.info(`Skipped avatar ${rec.hash}: not a valid CDN image for ${userId}`);
-        seen.delete(key);
+        // Keep the key on purpose: the probe itself leaves a resource-timing
+        // entry behind, and letting the sweep retry a confirmed-missing hash
+        // would re-probe it once every RESOURCE_SWEEP_INTERVAL_MS forever.
         return;
     }
     // exists === null: record optimistically, purge cleans up if it really

@@ -7,7 +7,7 @@
 import { Logger } from "@utils/Logger";
 
 import { buildAvatarUrl } from "../cdnUrl";
-import { CDN_HEAD_TIMEOUT_MS } from "../config";
+import { CDN_CHECK_TIMEOUT_MS, CDN_CONTROL_TTL_MS } from "../config";
 import { getHistory, removeRecord } from "../store";
 
 const log = new Logger("AvatarHistory");
@@ -27,8 +27,8 @@ export const defaultCdnExistsChecker: CdnExistsChecker = (userId, hash, formats,
 
 /**
  * Tri-state CDN check: true = confirmed image, false = confirmed missing,
- * null = inconclusive (network error, timeout, 5xx). On null the recording flow
- * records optimistically and the purge flow keeps the record.
+ * null = inconclusive (timeout, or the CDN itself is unreachable). On null the
+ * recording flow records optimistically and the purge flow keeps the record.
  */
 export async function checkCdnExists(userId: string, hash: string, formats: Array<"png" | "gif" | "webp">, avatarId?: string): Promise<boolean | null> {
     const key = `${userId}:${hash}:${avatarId ?? ""}`;
@@ -41,36 +41,75 @@ export async function checkCdnExists(userId: string, hash: string, formats: Arra
     return promise;
 }
 
+/**
+ * A long-lived asset on the same CDN, used to tell "the avatar is gone" from
+ * "the network is gone".
+ *
+ * Discord's CDN only sends `Access-Control-Allow-Origin` on success, so a
+ * `fetch()` of a missing avatar *rejects* instead of returning 404 — an outage
+ * and a deleted hash were indistinguishable, which is why this check used to
+ * return `null` for everything and purge never removed anything. `<img>` loads
+ * are not subject to CORS and a 404 body (`application/json`) fails to decode,
+ * so `onerror` here really does mean "not an image".
+ *
+ * Known limit: `<img>` exposes no status code, so a 5xx that hits one avatar
+ * URL while the control asset is still healthy reads as "missing". Real
+ * avatars are edge-cached for a year and purge only ever drops records without
+ * a local blob, so the worst case is losing one history row.
+ */
+const CDN_CONTROL_URL = "https://cdn.discordapp.com/embed/avatars/0.png";
+
+type ProbeResult = "ok" | "error" | "timeout";
+
+/** Loads `url` through a throwaway `<img>`: CORS-free, and only a decodable
+ *  image resolves. */
+function probeImage(url: string): Promise<ProbeResult> {
+    return new Promise(resolve => {
+        const img = new Image();
+        // One mutable holder: `finish` has to clear the timer, and the timer has
+        // to call `finish`, so neither can be a `const` declared first.
+        const state = { settled: false, timer: undefined as ReturnType<typeof setTimeout> | undefined };
+        const finish = (result: ProbeResult): void => {
+            if (state.settled) return;
+            state.settled = true;
+            clearTimeout(state.timer);
+            img.onload = null;
+            img.onerror = null;
+            resolve(result);
+        };
+        state.timer = setTimeout(() => finish("timeout"), CDN_CHECK_TIMEOUT_MS);
+        img.onload = () => finish("ok");
+        img.onerror = () => finish("error");
+        img.src = url;
+    });
+}
+
+let controlCheckedAt = 0;
+let controlAlive = false;
+
+/** Whether the CDN is reachable at all, cached for `CDN_CONTROL_TTL_MS`. */
+async function cdnReachable(): Promise<boolean> {
+    const now = Date.now();
+    if (now - controlCheckedAt < CDN_CONTROL_TTL_MS) return controlAlive;
+    // Cache-busted: an answer cached from before the network dropped would make
+    // every later failure look like a confirmed 404.
+    controlAlive = await probeImage(`${CDN_CONTROL_URL}?cb=${now}`) === "ok";
+    controlCheckedAt = now;
+    return controlAlive;
+}
+
 export async function cdnAvatarExists(userId: string, hash: string, formats: Array<"png" | "gif" | "webp">, avatarId?: string): Promise<boolean | null> {
     for (const fmt of formats) {
         const urls = avatarId
             ? [buildAvatarUrl(userId, hash, fmt, 256, avatarId), buildAvatarUrl(userId, hash, fmt, 256)]
             : [buildAvatarUrl(userId, hash, fmt, 256)];
         for (const url of urls) {
-            try {
-                const control = new AbortController();
-                const timer = setTimeout(() => control.abort(), CDN_HEAD_TIMEOUT_MS);
-                const res = await fetch(url, {
-                    method: "HEAD",
-                    credentials: "omit",
-                    signal: control.signal,
-                });
-                clearTimeout(timer);
-                if (!res.ok) {
-                    // 5xx is "unknown", not "missing" — never treat as confirmed-absent.
-                    if (res.status >= 500) return null;
-                    continue;
-                }
-                const ct = (res.headers.get("Content-Type") ?? "").toLowerCase();
-                if (!ct.startsWith("image/")) return false;
-                // No size floor: Discord serves its error bodies as application/json,
-                // which the check above already rejects, and a real avatar can
-                // compress below 1 kB.
-                return true;
-            } catch {
-                // Timeout / abort / network failure — inconclusive.
-                return null;
-            }
+            const probe = await probeImage(url);
+            if (probe === "ok") return true;
+            // Timeout is inconclusive on its own, and so is `error` while the
+            // control asset is failing too — never call a flaky network "missing".
+            if (probe === "timeout" || !await cdnReachable()) return null;
+            // Confirmed not-an-image: try the remaining formats/URL shapes.
         }
     }
     return false;
