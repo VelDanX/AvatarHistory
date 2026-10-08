@@ -5,6 +5,7 @@
  */
 
 import { NavContextMenuPatchCallback } from "@api/ContextMenu";
+import { Logger } from "@utils/Logger";
 import { User } from "@vencord/discord-types";
 import { Menu, RelationshipStore, UserStore } from "@webpack/common";
 
@@ -12,6 +13,17 @@ import { settings } from "./settings";
 import { isTracked, setTracked } from "./store";
 import { syncRecentNow } from "./sync/recentSync";
 import { recordUserAvatar, resetAndResync } from "./tracking";
+
+const log = new Logger("AvatarHistory");
+
+/**
+ * A menu action has no caller to await it, and recordUserAvatar awaits both the
+ * CDN probe and the store write — so without this a failure here is an
+ * unhandled rejection with no mention of what was clicked.
+ */
+function recordFromMenu(user: User, what: string): void {
+    void recordUserAvatar(user).catch(e => log.warn(`"${what}": failed to record ${user.id}`, e));
+}
 
 export const userContextPatch: NavContextMenuPatchCallback = (children, { user }: { user?: User }) => {
     if (!user) return;
@@ -23,7 +35,7 @@ export const userContextPatch: NavContextMenuPatchCallback = (children, { user }
             key="vc-avh-remember"
             id="vc-avh-remember"
             label="Remember current avatar"
-            action={() => void recordUserAvatar(user)}
+            action={() => recordFromMenu(user, "Remember current avatar")}
         />
     ];
 
@@ -40,7 +52,7 @@ export const userContextPatch: NavContextMenuPatchCallback = (children, { user }
                 action={() => {
                     const next = !isTracked(user.id);
                     void setTracked(user.id, next).then(() => {
-                        if (next) void recordUserAvatar(user);
+                        if (next) recordFromMenu(user, "Track avatar changes");
                     });
                 }}
             />

@@ -17,6 +17,28 @@ function sleep(ms: number): Promise<void> {
     return new Promise(r => setTimeout(r, ms));
 }
 
+/**
+ * Describes one failed check in a single short line.
+ *
+ * Discord's RestAPI rejects with a plain object, which the log renders as
+ * `[object Object]`. Dumping it whole is worse than useless: the response
+ * headers come first alphabetically and fill any budget before `status` and
+ * `body` are reached, so the line got cut mid-header and said nothing about
+ * which status came back. Those fields are picked instead, and an Error keeps
+ * its own message.
+ */
+function describeCheckError(e: unknown): string {
+    if (e instanceof Error) return `${e.name}: ${e.message}`;
+    const err = e as { status?: number; code?: number; message?: string; body?: unknown } | undefined;
+    const parts = [
+        err?.status != null ? `status=${err.status}` : undefined,
+        err?.code != null ? `code=${err.code}` : undefined,
+        err?.message ? `message=${err.message}` : undefined,
+        err?.body != null ? `body=${JSON.stringify(err.body).slice(0, 120)}` : undefined,
+    ].filter(Boolean);
+    return parts.length ? parts.join(" ") : JSON.stringify(e)?.slice(0, 120) ?? "unknown";
+}
+
 export class BackgroundSync {
     private timer: number | null = null;
     private sweeping = false;
@@ -117,8 +139,11 @@ export class BackgroundSync {
             const startedAt = Date.now();
             let checked = 0;
             let errors = 0;
+            let lastError = "";
             for (let i = 0; i < size; i++) {
-                if (this.stopped) return;
+                // Breaks rather than returns, so the sweep still reports what it
+                // managed before a stop (plugin reload, disabling the sweep).
+                if (this.stopped) break;
                 // Ids arrive stalest-first (sweepTargetIds), so the head is always
                 // the longest-unconfirmed user — no rotation needed.
                 const id = ids[i];
@@ -129,21 +154,23 @@ export class BackgroundSync {
                     if (await this.checkUser(id)) break;
                 } catch (e) {
                     errors++;
-                    // Discord's RestAPI rejects with plain objects, which the log
-                    // renders as `[object Object]` — stringify those and keep Error
-                    // as an argument, so DevTools still shows the stack.
-                    if (e instanceof Error) log.warn(`Background avatar check failed for ${id}`, e);
-                    else log.warn(`Background avatar check failed for ${id}: ${JSON.stringify(e)?.slice(0, 300)}`);
-                    this.noteCheck(Date.now() - checkStartedAt);
-                    if (this.stopped) return;
+                    lastError = describeCheckError(e);
+                    if (this.stopped) break;
                     await sleep(stagger * 2);
                     continue;
+                } finally {
+                    // Counted either way, and on the way out: a check that throws
+                    // still cost its REST round trip.
+                    this.noteCheck(Date.now() - checkStartedAt);
                 }
-                this.noteCheck(Date.now() - checkStartedAt);
-                if (this.stopped) return;
+                if (this.stopped) break;
                 await sleep(stagger);
             }
-            log.info(`Sweep done: ${checked}/${size} checked, ${errors} error(s), ${Date.now() - startedAt}ms (check≈${this.avgCheckMs}ms)`);
+            // One verdict per sweep. A per-user line for each failure was noise
+            // (a dead network produced 29), and the last one is kept here because
+            // it is usually the one that explains the first.
+            const verdict = `Sweep done: ${checked}/${size} checked, ${errors} error(s), ${Date.now() - startedAt}ms (check≈${this.avgCheckMs}ms)`;
+            log.info(this.stopped ? `${verdict} — interrupted` : verdict + (lastError ? `, last: ${lastError}` : ""));
         } catch (e) {
             log.info("Background avatar sweep aborted", e);
         } finally {

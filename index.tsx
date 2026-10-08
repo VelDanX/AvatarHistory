@@ -55,7 +55,12 @@ export default definePlugin({
         },
         CURRENT_USER_UPDATE({ user }: { user?: User }) {
             if (!user?.avatar || !settings.store.trackSelf) return;
-            void recordUserAvatar(user);
+            // Not via recordUserIfChanged: that one compares against the newest
+            // stored hash, and this path is the one that has to notice a change
+            // of *your own* avatar — which is precisely a hash the store does not
+            // have yet. Direct, and caught: this is the hottest recording path in
+            // the plugin, firing on every swap you make.
+            recordUserAvatar(user).catch(e => log.warn("CURRENT_USER_UPDATE: failed to record", e));
         },
         // Guild member data carries the current avatar hash without any
         // rendering, so a swap is visible before that avatar hits the screen.
