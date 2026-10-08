@@ -9,11 +9,13 @@ import { User } from "@vencord/discord-types";
 import { Constants, RelationshipStore, RestAPI, Toasts, UserStore } from "@webpack/common";
 
 import {
+    AVATAR_ATTEMPT_LIMIT,
+    AVATAR_ATTEMPT_TTL_MS,
     CDN_RETRY_DELAY_MS,
     DEFAULT_POLL_INTERVAL_SECONDS,
     GAP_FILL_STAGGER_MS
 } from "./config";
-import { smartPollIntervalSeconds, sweepTargetIds } from "./poll";
+import { autoPollIntervalMs, sweepTargetIds } from "./poll";
 import { settings } from "./settings";
 import {
     AvatarRecord,
@@ -48,13 +50,49 @@ function buildRecord(avatar: string): AvatarRecord {
     };
 }
 
+/**
+ * Remembered attempts at recording a hash that is *not* in history yet. Only
+ * the probing path consults it: a hash that made it into history is `known` on
+ * the next event and skips this entirely.
+ *
+ * Eviction runs before the insert, so the key just claimed is never the one
+ * dropped on the spot. Map order is insertion order, which is what makes the
+ * cap an oldest-first one.
+ */
+const avatarAttempts = new Map<string, number>();
+
+function claimAvatarAttempt(userId: string, hash: string): boolean {
+    const now = Date.now();
+    const key = `${userId}:${hash}`;
+    const last = avatarAttempts.get(key);
+    if (last != null && now - last < AVATAR_ATTEMPT_TTL_MS) return false;
+
+    if (avatarAttempts.size >= AVATAR_ATTEMPT_LIMIT) {
+        for (const [staleKey, at] of avatarAttempts) {
+            if (now - at >= AVATAR_ATTEMPT_TTL_MS) avatarAttempts.delete(staleKey);
+        }
+        while (avatarAttempts.size >= AVATAR_ATTEMPT_LIMIT) {
+            const oldest = avatarAttempts.keys().next().value;
+            if (oldest == null) break;
+            avatarAttempts.delete(oldest);
+        }
+    }
+
+    avatarAttempts.set(key, now);
+    return true;
+}
+
 export async function recordUserAvatar(user: User): Promise<void> {
     if (!user.avatar) return;
     const rec = buildRecord(user.avatar);
     const known = getHistory(user.id).some(r => sameHash(r.hash, rec.hash));
     // checkCdnExists is tri-state: false = confirmed missing, null = inconclusive
     // (record optimistically; purge cleans up later).
+    let cdn = "known";
     if (!known) {
+        // Claim before probing, or one dead hash turns every gateway event
+        // from that user into a burst of CDN requests.
+        if (!claimAvatarAttempt(user.id, rec.hash)) return;
         const formats: Array<"png" | "gif" | "webp"> = rec.format === "gif" ? ["gif", "webp", "png"] : ["png", "webp", "gif"];
         let ok = await checkCdnExists(user.id, rec.hash, formats);
         if (ok === false) {
@@ -65,10 +103,14 @@ export async function recordUserAvatar(user: User): Promise<void> {
             log.info(`Skipped avatar ${rec.hash}: rejected by Discord (not on CDN)`);
             return;
         }
+        cdn = ok === null ? "inconclusive" : "ok";
     }
     await recordAvatarSeen(user.id, rec);
     // A hash seen on a live user object is a confirmation, new or known.
     setLastSeen(user.id);
+    // Only a hash that was not in the history before is worth a line — the
+    // "already known" path runs on every other gateway event of that user.
+    if (!known) log.info(`Recorded avatar ${rec.hash} for ${user.id} (fmt=${rec.format}, cdn=${cdn})`);
     const newest = getHistory(user.id)[0];
     if (newest) void fetchAvatarBlob(user.id, newest);
 }
@@ -89,13 +131,15 @@ export function isAnyTrackingActive(): boolean {
 
 /** Background sweep interval, ms. Pure function of the settings: the Auto value
  *  is derived (poll.ts) and never written back, so `pollIntervalSeconds` stays
- *  the user's own number. */
-function resolvePollIntervalMs(): number {
+ *  the user's own number. Manual intervals are honoured as written — the user
+ *  picked that number; only Auto yields to the gateway stream.
+ *  Exported for the startup config line in services.ts. */
+export function resolvePollIntervalMs(): number {
     if (settings.store.pollIntervalMode === "manual") {
         const seconds = settings.store.pollIntervalSeconds;
         return (seconds > 0 ? seconds : DEFAULT_POLL_INTERVAL_SECONDS) * 1000;
     }
-    return smartPollIntervalSeconds(settings.store.trackFriends) * 1000;
+    return autoPollIntervalMs(settings.store.trackFriends, settings.store.gatewaySync);
 }
 
 async function getSweepIds(): Promise<string[]> {
@@ -155,7 +199,9 @@ export async function checkUserOnServer(userId: string): Promise<boolean> {
         }
 
         // Record directly — no synthetic USER_UPDATE dispatch into Flux.
-        recordUserIfChanged(user);
+        // Awaited: a fire-and-forget rejection would slip past this catch, so a
+        // failing record could be neither logged nor counted by the sweep.
+        await recordUserIfChanged(user);
         return false;
     } catch (e) {
         // Discord's REST layer *rejects* on error statuses rather than resolving
@@ -163,8 +209,10 @@ export async function checkUserOnServer(userId: string): Promise<boolean> {
         // must handle it, or every remaining user earns a 429 of its own.
         const err = e as { status?: number; body?: { retry_after?: number; } } | undefined;
         if (err?.status === 429) return onRateLimited(err);
-        log.warn(`Background avatar check failed for ${userId}`, e);
-        return false;
+        // Re-throw: the caller (BackgroundSync) logs and counts it. Swallowing it
+        // here made `Sweep done` report `0 error(s)` for a batch that had failed
+        // entirely — seen live: 27/27 checks, "0 error(s)".
+        throw e;
     }
 }
 

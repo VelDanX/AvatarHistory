@@ -5,9 +5,9 @@
  */
 
 import { classNameFactory } from "@utils/css";
-import { useEffect, useState } from "@webpack/common";
 
-import { AvatarRecord, buildAvatarUrl, getBlobObjectUrl } from "../../store";
+import { AvatarRecord } from "../../store";
+import { THUMB_SIZES, useAvatarImage } from "../useAvatarImage";
 
 const cl = classNameFactory("vc-avh-");
 
@@ -26,32 +26,27 @@ function RailThumb({
     onSelect(): void;
     innerRef?: (el: HTMLImageElement | null) => void;
 }) {
-    const [blobUrl, setBlobUrl] = useState<string | null>(null);
-
-    useEffect(() => {
-        let cancelled = false;
-        void getBlobObjectUrl(userId, rec).then(url => {
-            if (!cancelled) setBlobUrl(url);
-        });
-        return () => {
-            cancelled = true;
-        };
-    }, [userId, rec.hash, rec.hasBlob]);
+    const { src, onLoad, onError } = useAvatarImage(userId, rec, THUMB_SIZES);
 
     return (
         <img
             ref={innerRef}
             className={cl("lb-thumb", active && "active")}
-            src={blobUrl ?? buildAvatarUrl(userId, rec.hash, rec.format, 96, rec.avatarId)}
+            src={src}
             alt=""
             aria-label={`Avatar from ${new Date(rec.timestamp).toLocaleString()}`}
             aria-current={active}
             role="button"
             tabIndex={0}
-            loading="lazy"
+            // Eager on purpose: a lazy thumb inside the modal only loads once
+            // something forces a re-check (the rail.scrollTo on selection), so
+            // the rail looked empty until the first click.
+            decoding="async"
             draggable={false}
             data-thumb="true"
             onClick={onSelect}
+            onLoad={onLoad}
+            onError={onError}
             onKeyDown={e => {
                 // Enter/Space only. Arrows are left to the lightbox-level handler
                 // in useLightboxState — handling them here too would move two

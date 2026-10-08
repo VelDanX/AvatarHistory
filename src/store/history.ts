@@ -116,6 +116,7 @@ function migrateStoredHistory(raw: unknown): AvatarHistory | undefined {
 }
 
 export async function loadStore(): Promise<void> {
+    const startedAt = Date.now();
     const h = await get<unknown>(HISTORY_KEY);
     const t = await get<string[] | undefined>(TRACKED_KEY);
     const users = migrateStoredHistory(h);
@@ -125,6 +126,9 @@ export async function loadStore(): Promise<void> {
         await persistHistory();
     }
     if (t) trackedUsers = new Set(t.filter(id => typeof id === "string" && id));
+    let records = 0;
+    for (const entry of Object.values(history)) records += entry.records.length;
+    log.info(`Store loaded in ${Date.now() - startedAt}ms: ${Object.keys(history).length} user(s), ${records} record(s)`);
     notifyListeners();
     notifyTrackedListeners();
 }

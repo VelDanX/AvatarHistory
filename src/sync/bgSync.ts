@@ -22,6 +22,11 @@ export class BackgroundSync {
     private sweeping = false;
     private stopped = false;
     private pausedUntil = 0;
+    // EWMA of a single REST check (ms). Without it cap = interval/stagger only
+    // accounts for the stagger, while every check also costs ~200–500ms of REST.
+    private avgCheckMs = 0;
+    // When the current sweep started — the anchor for the schedule.
+    private lastSweepStartedAt = 0;
 
     constructor(
         private readonly ready: Promise<void>,
@@ -55,8 +60,28 @@ export class BackgroundSync {
         log.info(`Background sweep paused for ${Math.round(durationMs / 1000)}s`);
     }
 
-    private scheduleNext(): void {
-        this.timer = window.setTimeout(() => void this.sweep(), this.getIntervalMs());
+    /**
+     * Schedules the next sweep.
+     *
+     * Without an explicit delay the next sweep is anchored to the *start* of
+     * the previous one rather than to its end — otherwise the effective period
+     * is interval + sweep duration (346s instead of 300s with a 46s sweep).
+     * A pause (429) calls this with its own deadline: anchoring to the interval
+     * there could yield 0 and turn the wait into a busy-loop.
+     */
+    private scheduleNext(delayMs?: number): void {
+        if (this.stopped) return;
+        // The quick-start sweep runs outside this timer, so a stale timer may
+        // still be pending — drop it, or a second sweep would be scheduled.
+        if (this.timer != null) window.clearTimeout(this.timer);
+        const remaining = this.getIntervalMs()
+            - (this.lastSweepStartedAt ? Date.now() - this.lastSweepStartedAt : 0);
+        this.timer = window.setTimeout(() => void this.sweep(), delayMs ?? Math.max(0, remaining));
+    }
+
+    /** Plain EWMA: absorbs outliers (429s, timeouts) so the cap stays stable. */
+    private noteCheck(ms: number): void {
+        this.avgCheckMs = this.avgCheckMs === 0 ? ms : Math.round(this.avgCheckMs * 0.7 + ms * 0.3);
     }
 
     private async sweep(sizeOverride?: number, staggerOverride?: number): Promise<void> {
@@ -64,43 +89,66 @@ export class BackgroundSync {
         // Reschedule *before* bailing out: the pending timer is already consumed
         // here, so returning without a new one would kill the sweep chain.
         if (Date.now() < this.pausedUntil) {
-            this.scheduleNext();
+            this.scheduleNext(Math.max(0, this.pausedUntil - Date.now()) + 1000);
             return;
         }
         const stagger = staggerOverride ?? this.staggerMs;
         this.sweeping = true;
+        // Anchor for scheduleNext — counted from here, not from the end of the sweep.
+        this.lastSweepStartedAt = Date.now();
         try {
             const ids = await this.getSweepIds();
-            if (!ids.length) return;
+            if (!ids.length) {
+                log.info("Sweep: no users to check");
+                return;
+            }
 
             const intervalMs = this.getIntervalMs();
-            // Pace the batch to the interval (at most interval/stagger users); a
-            // hard floor would defeat pacing — a 30s interval with a 1500ms
-            // stagger is 20 users, not 100 in a row.
-            const cap = Math.max(1, Math.floor(intervalMs / this.staggerMs));
+            // Pace the batch so it *fits* into the interval: a user costs the
+            // stagger plus the REST call, so cap = interval/stagger always
+            // overran the interval — with a large list the sweep became nearly
+            // continuous. A hard floor would defeat pacing just the same.
+            const perUserMs = Math.max(1, stagger + this.avgCheckMs);
+            const cap = Math.max(1, Math.floor(intervalMs / perUserMs));
             const size = Math.min(sizeOverride ?? cap, ids.length);
+            // `log.debug` would be invisible here: console.debug never reaches
+            // renderer_js.log, so cadence diagnostics stay plain info lines.
+            log.info(`Sweep start: ${size}/${ids.length} users, interval=${Math.round(intervalMs / 1000)}s, stagger=${stagger}ms, cap=${cap}`);
+            const startedAt = Date.now();
+            let checked = 0;
+            let errors = 0;
             for (let i = 0; i < size; i++) {
                 if (this.stopped) return;
                 // Ids arrive stalest-first (sweepTargetIds), so the head is always
                 // the longest-unconfirmed user — no rotation needed.
                 const id = ids[i];
+                checked++;
+                const checkStartedAt = Date.now();
                 try {
                     // checkUser returns true to abort the batch (e.g. after a 429).
                     if (await this.checkUser(id)) break;
                 } catch (e) {
-                    log.warn(`Background avatar check failed for ${id}`, e);
+                    errors++;
+                    // Discord's RestAPI rejects with plain objects, which the log
+                    // renders as `[object Object]` — stringify those and keep Error
+                    // as an argument, so DevTools still shows the stack.
+                    if (e instanceof Error) log.warn(`Background avatar check failed for ${id}`, e);
+                    else log.warn(`Background avatar check failed for ${id}: ${JSON.stringify(e)?.slice(0, 300)}`);
+                    this.noteCheck(Date.now() - checkStartedAt);
                     if (this.stopped) return;
                     await sleep(stagger * 2);
                     continue;
                 }
+                this.noteCheck(Date.now() - checkStartedAt);
                 if (this.stopped) return;
                 await sleep(stagger);
             }
+            log.info(`Sweep done: ${checked}/${size} checked, ${errors} error(s), ${Date.now() - startedAt}ms (check≈${this.avgCheckMs}ms)`);
         } catch (e) {
             log.info("Background avatar sweep aborted", e);
         } finally {
             this.sweeping = false;
-            if (!this.stopped) this.scheduleNext();
+            this.scheduleNext();
         }
     }
 }

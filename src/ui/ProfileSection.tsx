@@ -6,37 +6,31 @@
 
 import { RightArrow } from "@components/Icons";
 import { classNameFactory } from "@utils/css";
-import { useEffect, useState } from "@webpack/common";
 
-import { AvatarRecord, buildAvatarUrl, getBlobObjectUrl, useHistory } from "../store";
+import { AvatarRecord, useHistory } from "../store";
 import { openAvatarLightbox } from "./lightbox/Lightbox";
+import { THUMB_SIZES, useAvatarImage } from "./useAvatarImage";
 
 const cl = classNameFactory("vc-avh-");
 const PREVIEW_COUNT = 4;
 
 function ProfileThumb({ userId, rec, index }: { userId: string; rec: AvatarRecord; index: number }) {
-    const [blobUrl, setBlobUrl] = useState<string | null>(null);
-
-    // Deliberately no `hasBlob` guard: getBlobObjectUrl -> fetchAvatarBlob
-    // fetches and persists the copy, so opening a profile repairs records that
-    // were captured without one.
-    useEffect(() => {
-        let cancelled = false;
-        void getBlobObjectUrl(userId, rec).then(url => {
-            if (!cancelled) setBlobUrl(url);
-        });
-        return () => {
-            cancelled = true;
-        };
-    }, [userId, rec.hash, rec.hasBlob]);
+    // Deliberately no `hasBlob` guard: useAvatarImage -> getBlobObjectUrl ->
+    // fetchAvatarBlob fetches and persists the copy, so opening a profile
+    // repairs records that were captured without one.
+    const { src, onLoad, onError } = useAvatarImage(userId, rec, THUMB_SIZES);
 
     return (
         <img
             className={`${cl("profile-thumb")} ${cl(`profile-thumb-${index}`)}`}
-            src={blobUrl ?? buildAvatarUrl(userId, rec.hash, rec.format, 96, rec.avatarId)}
+            src={src}
             alt=""
-            loading="lazy"
+            // Eager: the grid is only four 56px thumbs, and lazy loading here
+            // waited for an interaction just like in the lightbox rail.
+            decoding="async"
             onClick={() => openAvatarLightbox(userId, index)}
+            onLoad={onLoad}
+            onError={onError}
         />
     );
 }

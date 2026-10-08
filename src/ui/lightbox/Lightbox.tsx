@@ -6,7 +6,6 @@
 
 import { classNameFactory } from "@utils/css";
 import { copyWithToast } from "@utils/discord";
-import { useAwaiter } from "@utils/react";
 import { RenderModalProps } from "@vencord/discord-types";
 import {
     moment,
@@ -18,13 +17,14 @@ import {
 } from "@webpack/common";
 
 import {
+    AvatarRecord,
     buildAvatarUrl,
     clearUserHistory,
-    getBlobObjectUrl,
     removeRecord,
     setTracked,
     useTrackedUsers
 } from "../../store";
+import { STAGE_SIZES, useAvatarImage } from "../useAvatarImage";
 import { applyAvatar, downloadAvatar, exportHistoryFile, importHistoryFile, rememberCurrentAvatar } from "./actions";
 import { AvatarRail } from "./AvatarRail";
 import { ConfirmBar } from "./ConfirmBar";
@@ -57,6 +57,28 @@ export function openAvatarLightbox(userId: string, initialIndex = 0): void {
     ), {
         onCloseRequest() {}
     });
+}
+
+/** Main stage image. Mounted with a `key` on `rec.hash`: the stored-copy fetch
+ *  and the CDN fallback chain both belong to a single record. */
+function StageImage({ userId, rec, onContextMenu }: {
+    userId: string;
+    rec: AvatarRecord;
+    onContextMenu(e: React.MouseEvent): void;
+}) {
+    const { src, onLoad, onError } = useAvatarImage(userId, rec, STAGE_SIZES);
+
+    return (
+        <img
+            className={cl("lb-img")}
+            src={src}
+            alt="avatar"
+            draggable={false}
+            onLoad={onLoad}
+            onError={onError}
+            onContextMenu={onContextMenu}
+        />
+    );
 }
 
 function AvatarLightbox({ userId, initialIndex, modalProps }: { userId: string; initialIndex: number; modalProps: RenderModalProps }) {
@@ -142,11 +164,6 @@ function AvatarLightbox({ userId, initialIndex, modalProps }: { userId: string; 
             setSetting(false);
         }
     };
-
-    const [src] = useAwaiter(
-        () => (rec ? getBlobObjectUrl(userId, rec) : Promise.resolve<string | null>(null)),
-        { fallbackValue: null, deps: [userId, rec?.hash, rec?.hasBlob] }
-    );
 
     if (!rec) return null;
 
@@ -248,12 +265,10 @@ function AvatarLightbox({ userId, initialIndex, modalProps }: { userId: string; 
             )}
 
             <div className={cl("lb-stage")}>
-                <img
+                <StageImage
                     key={rec.hash}
-                    className={cl("lb-img")}
-                    src={src ?? cdnUrl}
-                    alt="avatar"
-                    draggable={false}
+                    userId={userId}
+                    rec={rec}
                     onContextMenu={e => openImageContextMenu(e, imageMenuDeps)}
                 />
             </div>

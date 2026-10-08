@@ -7,8 +7,8 @@
 import { get, set } from "@api/DataStore";
 import { Logger } from "@utils/Logger";
 
-import { buildAvatarUrl } from "../cdnUrl";
-import { BLOB_BUDGET_BYTES, BLOB_FETCH_TIMEOUT_MS } from "../config";
+import { buildAvatarUrlFallbacks } from "../cdnUrl";
+import { BLOB_BUDGET_BYTES, BLOB_FETCH_SIZES, BLOB_FETCH_TIMEOUT_MS } from "../config";
 // Intentional cycle with ./history: runtime-only use of hoisted declarations, safe under ESM.
 import { updateRecord } from "./history";
 import { AvatarRecord, blobKeyFor } from "./types";
@@ -32,9 +32,10 @@ export async function fetchAvatarBlob(userId: string, rec: AvatarRecord): Promis
                 updateRecord(userId, rec, { hasBlob: true, size: cached.size });
                 return cached;
             }
-            const urls = rec.avatarId
-                ? [buildAvatarUrl(userId, rec.hash, rec.format, 512, rec.avatarId), buildAvatarUrl(userId, rec.hash, rec.format, 512)]
-                : [buildAvatarUrl(userId, rec.hash, rec.format, 512)];
+            // Best quality first, per path: the archived path is the only one
+            // that exists for hashes that are no longer the user's current
+            // avatar, and a stored copy outlives the CDN entry entirely.
+            const urls = buildAvatarUrlFallbacks(userId, rec.hash, rec.format, rec.avatarId, BLOB_FETCH_SIZES);
             let blob: Blob | null = null;
             for (const url of urls) {
                 // Bounded: a request that never settles would pin its key in
@@ -149,22 +150,25 @@ export function blobToDataUrl(blob: Blob): Promise<string> {
 export async function avatarToDataUrl(userId: string, rec: AvatarRecord): Promise<string | null> {
     let blob = await fetchAvatarBlob(userId, rec);
     if (!blob) {
-        // Bounded for the same reason as above: a hang here leaves the button spinning.
-        const control = new AbortController();
-        const timer = setTimeout(() => control.abort(), BLOB_FETCH_TIMEOUT_MS);
-        try {
-            const res = await fetch(buildAvatarUrl(userId, rec.hash, rec.format, 512, rec.avatarId), {
-                credentials: "omit",
-                signal: control.signal
-            });
-            if (!res.ok) return null;
-            blob = await res.blob();
-        } catch (e) {
-            log.debug("avatarToDataUrl fetch failed", userId, rec.hash, e);
-            return null;
-        } finally {
-            clearTimeout(timer);
+        // No stored copy: walk the same candidates as fetchAvatarBlob, best
+        // quality first. Bounded per URL for the same reason as above: a hang
+        // here leaves the button spinning.
+        for (const url of buildAvatarUrlFallbacks(userId, rec.hash, rec.format, rec.avatarId, BLOB_FETCH_SIZES)) {
+            const control = new AbortController();
+            const timer = setTimeout(() => control.abort(), BLOB_FETCH_TIMEOUT_MS);
+            try {
+                const res = await fetch(url, { credentials: "omit", signal: control.signal });
+                if (res.ok) {
+                    blob = await res.blob();
+                    break;
+                }
+            } catch (e) {
+                log.debug("avatarToDataUrl fetch failed", userId, rec.hash, url, e);
+            } finally {
+                clearTimeout(timer);
+            }
         }
+        if (!blob) return null;
     }
     if (blob.type === "image/webp") {
         return blobToPngDataUrl(blob);

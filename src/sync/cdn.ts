@@ -95,23 +95,37 @@ async function cdnReachable(): Promise<boolean> {
     // every later failure look like a confirmed 404.
     controlAlive = await probeImage(`${CDN_CONTROL_URL}?cb=${now}`) === "ok";
     controlCheckedAt = now;
+    log.info(`CDN control asset: ${controlAlive ? "alive" : "dead"}`);
     return controlAlive;
 }
 
 export async function cdnAvatarExists(userId: string, hash: string, formats: Array<"png" | "gif" | "webp">, avatarId?: string): Promise<boolean | null> {
+    const startedAt = Date.now();
+    // One line per verdict instead of one per URL: a check can walk up to six
+    // URL shapes, and this is what tells "CDN said no" from "network said no".
+    const verdict = (result: string): void => {
+        log.info(`CDN ${userId}/${hash}: ${result} (${Date.now() - startedAt}ms)`);
+    };
     for (const fmt of formats) {
         const urls = avatarId
             ? [buildAvatarUrl(userId, hash, fmt, 256, avatarId), buildAvatarUrl(userId, hash, fmt, 256)]
             : [buildAvatarUrl(userId, hash, fmt, 256)];
         for (const url of urls) {
             const probe = await probeImage(url);
-            if (probe === "ok") return true;
+            if (probe === "ok") {
+                verdict("exists");
+                return true;
+            }
             // Timeout is inconclusive on its own, and so is `error` while the
             // control asset is failing too — never call a flaky network "missing".
-            if (probe === "timeout" || !await cdnReachable()) return null;
+            if (probe === "timeout" || !await cdnReachable()) {
+                verdict(probe === "timeout" ? "timeout → inconclusive" : "control asset unreachable → inconclusive");
+                return null;
+            }
             // Confirmed not-an-image: try the remaining formats/URL shapes.
         }
     }
+    verdict("missing");
     return false;
 }
 

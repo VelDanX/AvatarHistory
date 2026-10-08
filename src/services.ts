@@ -10,12 +10,14 @@ import { UserStore } from "@webpack/common";
 import { migratePollIntervalSetting, settings } from "./settings";
 import { clearBlobUrls, flushLastSeen, loadStore, setTracked } from "./store";
 import { purgeInvalidRecords } from "./sync/cdn";
+import { startGatewayTracking, stopGatewayTracking } from "./sync/gateway";
 import { pullRecentFromServer } from "./sync/recentSync";
 import { startRecentSync, stopRecentSync } from "./sync/sniffer";
 import {
     fillHistoryGaps,
     isAnyTrackingActive,
     recordUserAvatar,
+    resolvePollIntervalMs,
     shouldTrack,
     startBackgroundSync,
     stopBackgroundSync
@@ -28,11 +30,19 @@ const log = new Logger("AvatarHistory");
 export function startAvatarHistory(): void {
     migratePollIntervalSetting();
 
+    log.info(
+        `Config: trackSelf=${settings.store.trackSelf} trackFriends=${settings.store.trackFriends} `
+        + `pollTracked=${settings.store.pollTracked} gatewaySync=${settings.store.gatewaySync} `
+        + `poll=${settings.store.pollIntervalMode} ${Math.round(resolvePollIntervalMs() / 1000)}s`
+    );
+
     let resolveReady!: () => void;
     const storeReady = new Promise<void>(r => resolveReady = r);
 
     startRecentSync(isAnyTrackingActive, storeReady, shouldTrack);
     startBackgroundSync(storeReady);
+    // Taps the WebSocket the client already holds; gated on storeReady inside.
+    startGatewayTracking(storeReady);
 
     void loadStore().then(() => {
         if (settings.store.trackSelf) {
@@ -53,6 +63,8 @@ export function startAvatarHistory(): void {
 }
 
 export function stopAvatarHistory(): void {
+    log.info("Stopped");
+    stopGatewayTracking();
     stopRecentSync();
     stopBackgroundSync();
     clearBlobUrls();

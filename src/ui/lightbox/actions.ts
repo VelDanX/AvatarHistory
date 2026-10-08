@@ -22,7 +22,7 @@ import {
 
 export async function downloadAvatar(userId: string, rec: AvatarRecord): Promise<void> {
     const blob = await fetchAvatarBlob(userId, rec);
-    const url = buildAvatarUrl(userId, rec.hash, rec.format, 512, rec.avatarId);
+    const url = buildAvatarUrl(userId, rec.hash, rec.format, 1024, rec.avatarId);
     if (!blob) {
         copyWithToast(url, "Failed to load image, copied URL instead");
         return;
