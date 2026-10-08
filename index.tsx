@@ -19,6 +19,19 @@ import { AvatarHistoryProfileSection } from "./src/ui/ProfileSection";
 
 const log = new Logger("AvatarHistory");
 
+/**
+ * Records a user from a flux event, logging a failure instead of dropping it.
+ *
+ * Nothing awaits a dispatch handler, so a rejection from the CDN probe or the
+ * store write would arrive as an unhandled rejection with no indication of
+ * which event or user produced it. `GUILD_MEMBERS_CHUNK_BATCH` in particular
+ * fans out over every member of every guild the client has open, so a shared
+ * failure there repeats dozens of times.
+ */
+function recordUserQuietly(user: Partial<User> | undefined, source: string): void {
+    recordUserIfChanged(user)?.catch(e => log.warn(`${source}: failed to record ${user?.id}`, e));
+}
+
 export default definePlugin({
     name: "AvatarHistory",
     description: "Passively save avatar history of tracked users and browse it from their profile.",
@@ -35,10 +48,10 @@ export default definePlugin({
 
     flux: {
         USER_UPDATE({ user }: { user?: User }) {
-            recordUserIfChanged(user);
+            recordUserQuietly(user, "USER_UPDATE");
         },
         PRESENCE_UPDATES({ users }: { users?: Array<Partial<User>> }) {
-            for (const user of users ?? []) recordUserIfChanged(user);
+            for (const user of users ?? []) recordUserQuietly(user, "PRESENCE_UPDATES");
         },
         CURRENT_USER_UPDATE({ user }: { user?: User }) {
             if (!user?.avatar || !settings.store.trackSelf) return;
@@ -47,11 +60,11 @@ export default definePlugin({
         // Guild member data carries the current avatar hash without any
         // rendering, so a swap is visible before that avatar hits the screen.
         GUILD_MEMBER_UPDATE({ user }: { user?: Partial<User> }) {
-            recordUserIfChanged(user);
+            recordUserQuietly(user, "GUILD_MEMBER_UPDATE");
         },
         GUILD_MEMBERS_CHUNK_BATCH({ chunks }: { chunks?: Array<{ members?: Array<{ user?: Partial<User> }> }> }) {
             for (const chunk of chunks ?? []) {
-                for (const member of chunk?.members ?? []) recordUserIfChanged(member?.user);
+                for (const member of chunk?.members ?? []) recordUserQuietly(member?.user, "GUILD_MEMBERS_CHUNK_BATCH");
             }
         },
     },

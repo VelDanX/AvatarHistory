@@ -168,7 +168,9 @@ function AvatarLightbox({ userId, initialIndex, modalProps }: { userId: string; 
     if (!rec) return null;
 
     const date = moment(rec.timestamp);
-    const cdnUrl = buildAvatarUrl(userId, rec.hash, rec.format, 1024, rec.avatarId);
+    // For the "copy URL" action, not for display: STAGE_SIZES[0] is the size
+    // the stage itself asks for, so the copied link is the one on screen.
+    const cdnUrl = buildAvatarUrl(userId, rec.hash, rec.format, STAGE_SIZES[0], rec.avatarId);
     const off = date.utcOffset();
     const tz = `${off < 0 ? "-" : "+"}${Math.floor(Math.abs(off) / 60)}${Math.abs(off) % 60 ? `:${String(Math.abs(off) % 60).padStart(2, "0")}` : ""}`;
 

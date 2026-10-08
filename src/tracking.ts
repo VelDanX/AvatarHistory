@@ -199,8 +199,9 @@ export async function checkUserOnServer(userId: string): Promise<boolean> {
         }
 
         // Record directly — no synthetic USER_UPDATE dispatch into Flux.
-        // Awaited: a fire-and-forget rejection would slip past this catch, so a
-        // failing record could be neither logged nor counted by the sweep.
+        // Awaited: this catch is the only thing that can log and count a
+        // failing record, so a fire-and-forget rejection would slip past it
+        // entirely and the sweep would report a clean batch.
         await recordUserIfChanged(user);
         return false;
     } catch (e) {
@@ -223,7 +224,21 @@ function onRateLimited(payload: { body?: { retry_after?: number; } }): true {
     return true;
 }
 
-export function recordUserIfChanged(user?: Partial<User>): void {
+/**
+ * Records a user only if their avatar hash is not the newest one we have.
+ *
+ * Returns the recording promise so a caller that awaits it — the sweep, which
+ * has a catch to feed its error count — actually observes the outcome. It used
+ * to be `void` with a bare `void recordUserAvatar(...)` inside, so `await`ing
+ * it here awaited `undefined` and a failed record reached nobody: no log, no
+ * `Sweep done … error(s)` count, and an unhandled rejection in every
+ * fire-and-forget caller.
+ *
+ * The early returns resolve to `undefined` rather than a promise; awaiting
+ * `undefined` is fine, and the return type stays `Promise<void> | undefined`
+ * so callers are forced to notice whether there is anything to await.
+ */
+export function recordUserIfChanged(user?: Partial<User>): Promise<void> | undefined {
     if (!user || typeof user.id !== "string" || typeof user.avatar !== "string") return;
     if (!shouldTrack(user.id)) return;
     const newest = getHistory(user.id)[0];
@@ -231,7 +246,7 @@ export function recordUserIfChanged(user?: Partial<User>): void {
         setLastSeen(user.id);
         return;
     }
-    void recordUserAvatar(user as User);
+    return recordUserAvatar(user as User);
 }
 
 export function startBackgroundSync(ready: Promise<void>): void {

@@ -49,7 +49,8 @@ Vencord / Equicord userplugin that passively records avatar changes and lets you
 | trackSelf | ✔ | Track your own avatar changes |
 | trackFriends | ✘ | Auto-track avatar changes of all your friends |
 | pollTracked | ✔ | Periodically re-check tracked users' avatars in the background. If disabled, avatars of other tracked users only update when you view their profile |
-| pollIntervalMode | Auto | Interval mode: **Auto** tunes the re-check interval to the number of tracked users (30 s – 30 min); **Manual** shows a seconds input pre-filled with the interval Auto currently picks |
+| gatewaySync | ✔ | Also read avatars off Discord's gateway stream (`USER_UPDATE`, `GUILD_MEMBER_UPDATE`, `MESSAGE_CREATE`, `PRESENCE_UPDATE`): changes of tracked users are caught in the background, even for profiles you never open and messages you never scroll to. With this on, the Auto poll interval becomes a floor of 5 minutes — the sweep is a safety net for what events miss, not the primary source |
+| pollIntervalMode | Auto | Interval mode: **Auto** tunes the re-check interval to the number of tracked users (30 s – 30 min, or 5 min – 30 min with gatewaySync on); **Manual** shows a seconds input pre-filled with the interval Auto currently picks |
 | pollIntervalSeconds | 30 s (Manual only) | Fixed re-check interval in seconds — only shown when the mode is set to Manual. Auto never overwrites it; it is yours |
 
 The settings screen — toggles for tracking, a live overview of tracked users (avatars, names, source badges, copyable user IDs, per-user remove buttons) and the poll interval mode:
@@ -132,12 +133,15 @@ avatarHistory/
 │   ├── sync/                       # Syncing with Discord and the CDN
 │   │   ├── sniffer.ts              # Interception of rendered avatars (resource timing + <img>)
 │   │   ├── recentSync.ts           # Your own past avatars from the server (/users/@me/avatars) + manual sync
+│   │   ├── gateway.ts              # Avatars off the client's own gateway stream (FluxDispatcher, no socket of our own)
 │   │   ├── bgSync.ts               # Background re-check: intervals, stagger, backoff on 429 (queue by staleness)
 │   │   └── cdn.ts                  # HEAD check of an avatar on the CDN and cleanup of dead records (your own by default)
 │   │
 │   └── ui/                         # Interface
 │       ├── ProfileSection.tsx      # "Avatar history" section with thumbnails in the profile
 │       ├── TrackedUsersOverview.tsx# Live list of tracked users in settings
+│       ├── useAvatarImage.ts       # Shared <img> source: CDN guess → off-screen probe → blob → dated placeholder
+│       ├── avatarPlaceholder.ts    # Dated SVG shown when every source for a record is dead
 │       └── lightbox/
 │           ├── Lightbox.tsx        # Fullscreen viewer + openAvatarLightbox()
 │           ├── useLightboxState.ts # State hook: index, records, keys and zone clicks
@@ -208,7 +212,8 @@ refactor cannot break the rest of the plugin.
 | trackSelf | ✔ | Отслеживать свой аватар |
 | trackFriends | ✘ | Автоотслеживание аватаров всех друзей |
 | pollTracked | ✔ | Периодически перепроверять аватарки отслеживаемых в фоне. Если выключено — аватарки других отслеживаемых обновляются только при просмотре их профиля |
-| pollIntervalMode | Auto | Режим интервала: **Auto** подстраивает интервал перепроверки под число отслеживаемых (30 с – 30 мин); **Manual** показывает поле ввода секунд, подставленное с тем интервалом, который Auto выбирает сейчас |
+| gatewaySync | ✔ | Дополнительно читать аватарки из гейтвей-потока Discord (`USER_UPDATE`, `GUILD_MEMBER_UPDATE`, `MESSAGE_CREATE`, `PRESENCE_UPDATE`): смены аватарок отслеживаемых ловятся в фоне, даже для профилей, которые ты не открывал, и сообщений, до которых не прокрутил. С включённой настройкой автоинтервал получает флор в 5 минут — свип становится страховкой на то, что события пропустили, а не основным источником |
+| pollIntervalMode | Auto | Режим интервала: **Auto** подстраивает интервал перепроверки под число отслеживаемых (30 с – 30 мин, а с gatewaySync — 5 мин – 30 мин); **Manual** показывает поле ввода секунд, подставленное с тем интервалом, который Auto выбирает сейчас |
 | pollIntervalSeconds | 30 с (только Manual) | Фиксированный интервал перепроверки в секундах — показывается только в режиме Manual. Auto его не перезаписывает, это ваше значение |
 
 Экран настроек — тоглы отслеживания, живой обзор отслеживаемых (аватары, имена, бейджи источника, копируемые UserID, кнопки удаления каждого пользователя) и режим интервала проверки:
@@ -293,12 +298,15 @@ avatarHistory/
 │   ├── sync/                       # Синхронизация с Discord и CDN
 │   │   ├── sniffer.ts              # Перехват отрисованных аватаров (resource timing + <img>)
 │   │   ├── recentSync.ts           # Свои прошлые аватары с сервера (/users/@me/avatars) + ручной синк
+│   │   ├── gateway.ts              # Аватарки из гейтвей-потока самого клиента (FluxDispatcher, без своего сокета)
 │   │   ├── bgSync.ts               # Фоновая перепроверка: интервалы, stagger, backoff при 429 (очередь — по давности)
 │   │   └── cdn.ts                  # HEAD-проверка аватара на CDN и очистка битых записей (по умолчанию у себя)
 │   │
 │   └── ui/                         # Интерфейс
 │       ├── ProfileSection.tsx      # Секция «Avatar history» с миниатюрами в профиле
 │       ├── TrackedUsersOverview.tsx# Живой список отслеживаемых в настройках
+│       ├── useAvatarImage.ts       # Общий src для <img>: догадка CDN → офскрин-проба → блоб → датированная заглушка
+│       ├── avatarPlaceholder.ts    # SVG с датой записи, когда не сработал ни один источник
 │       └── lightbox/
 │           ├── Lightbox.tsx        # Полноэкранный просмотрщик + openAvatarLightbox()
 │           ├── useLightboxState.ts # Хук состояния: индекс, записи, клавиши и клики по зонам

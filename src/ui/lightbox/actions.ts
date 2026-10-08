@@ -9,6 +9,7 @@ import { saveFile } from "@utils/web";
 import { User } from "@vencord/discord-types";
 import { FluxDispatcher, moment, RestAPI, showToast, Toasts, UserStore } from "@webpack/common";
 
+import { BLOB_FETCH_SIZES } from "../../config";
 import {
     AvatarRecord,
     avatarToDataUrl,
@@ -22,7 +23,10 @@ import {
 
 export async function downloadAvatar(userId: string, rec: AvatarRecord): Promise<void> {
     const blob = await fetchAvatarBlob(userId, rec);
-    const url = buildAvatarUrl(userId, rec.hash, rec.format, 1024, rec.avatarId);
+    // Best quality first — the same preference fetchAvatarBlob uses. A dead
+    // best-size is copied rather than worked around: the user gets a URL, not a
+    // file, and any other size would be a guess too.
+    const url = buildAvatarUrl(userId, rec.hash, rec.format, BLOB_FETCH_SIZES[0], rec.avatarId);
     if (!blob) {
         copyWithToast(url, "Failed to load image, copied URL instead");
         return;

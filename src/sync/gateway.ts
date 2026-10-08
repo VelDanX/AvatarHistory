@@ -45,6 +45,17 @@ const SOURCES = {
 let unsubscribeAll: Array<() => void> | null = null;
 let storeReady = false;
 
+/**
+ * Last logged state per user, so a line is written on a transition only.
+ *
+ * A tracked user on Discord's default avatar emits `null` from
+ * `GUILD_MEMBER_UPDATE` on every nick or role change, and a tracked user with a
+ * known hash emits `known` on every event — logging the state rather than the
+ * change buries the transitions that matter. Keyed like `avatarAttempts` in
+ * tracking.ts, and cleared with the subscription on stop.
+ */
+const lastLoggedState = new Map<string, string>();
+
 export function startGatewayTracking(ready: Promise<void>): void {
     if (unsubscribeAll) return;
     unsubscribeAll = [];
@@ -73,14 +84,21 @@ export function startGatewayTracking(ready: Promise<void>): void {
             // hash: only the last-seen timestamp gets refreshed.
             const newest = getHistory(user.id)[0];
             const state = !user.avatar ? "null" : newest && sameHash(newest.hash, user.avatar) ? "known" : "new";
-            // Noise budget: profile events are rare, so they always leave a
-            // trace; MESSAGE_CREATE and PRESENCE_UPDATE fire constantly and only
-            // earn a line when they bring a hash we have not seen yet.
-            const quiet = event === "MESSAGE_CREATE" || event === "PRESENCE_UPDATE";
-            if (state === "new" || !quiet)
+            // Log transitions, not states. `log.debug` is not an option here:
+            // console.debug does not reach renderer_js.log, so these lines only
+            // exist in DevTools. Instead the first sighting of a state is written
+            // and repeats are dropped — a user whose hash is already known, or
+            // who has no avatar at all, leaves one line and then silence, while
+            // every actual change still logs.
+            if (lastLoggedState.get(user.id) !== state) {
+                lastLoggedState.set(user.id, state);
                 log.info(`Gateway ${event}: ${user.id} avatar ${state}`);
+            }
 
-            recordUserIfChanged(user);
+            // Caught rather than dropped: there is no sweep here to count the
+            // error, so an escaping rejection would surface as an unhandled
+            // promise with nothing to connect it to this user's hash.
+            recordUserIfChanged(user)?.catch(e => log.warn(`Gateway ${event}: failed to record ${user.id}`, e));
         };
         FluxDispatcher.subscribe(event, listener);
         unsubscribeAll.push(() => FluxDispatcher.unsubscribe(event, listener));
@@ -93,4 +111,5 @@ export function stopGatewayTracking(): void {
     for (const off of unsubscribeAll) off();
     unsubscribeAll = null;
     storeReady = false;
+    lastLoggedState.clear();
 }
