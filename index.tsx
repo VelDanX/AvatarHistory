@@ -50,8 +50,8 @@ export default definePlugin({
         USER_UPDATE({ user }: { user?: User }) {
             recordUserQuietly(user, "USER_UPDATE");
         },
-        PRESENCE_UPDATES({ users }: { users?: Array<Partial<User>> }) {
-            for (const user of users ?? []) recordUserQuietly(user, "PRESENCE_UPDATES");
+        PRESENCE_UPDATES({ updates }: { updates?: Array<{ user?: Partial<User>; }> }) {
+            for (const update of updates ?? []) recordUserQuietly(update?.user, "PRESENCE_UPDATES");
         },
         CURRENT_USER_UPDATE({ user }: { user?: User }) {
             if (!user?.avatar || !settings.store.trackSelf) return;

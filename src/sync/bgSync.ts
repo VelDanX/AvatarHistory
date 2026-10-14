@@ -149,28 +149,39 @@ export class BackgroundSync {
                 const id = ids[i];
                 checked++;
                 const checkStartedAt = Date.now();
+                // Snapshot the REST cost where the check settles — in the
+                // try, right after it returns, or at the top of the catch.
+                // Deliberately *before* the error backoff below, so the EWMA
+                // measures the round trip and not the wait that follows a
+                // failure. noteCheck in the finally uses this snapshot.
+                let checkCost = 0;
                 try {
                     // checkUser returns true to abort the batch (e.g. after a 429).
-                    if (await this.checkUser(id)) break;
+                    const abort = await this.checkUser(id);
+                    checkCost = Date.now() - checkStartedAt;
+                    if (abort) break;
                 } catch (e) {
                     errors++;
                     lastError = describeCheckError(e);
                     if (this.stopped) break;
+                    checkCost = Date.now() - checkStartedAt;
                     await sleep(stagger * 2);
                     continue;
                 } finally {
-                    // Counted either way, and on the way out: a check that throws
+                    // Counted either way, on the way out — a check that throws
                     // still cost its REST round trip.
-                    this.noteCheck(Date.now() - checkStartedAt);
+                    if (checkCost) this.noteCheck(checkCost);
                 }
                 if (this.stopped) break;
                 await sleep(stagger);
             }
             // One verdict per sweep. A per-user line for each failure was noise
             // (a dead network produced 29), and the last one is kept here because
-            // it is usually the one that explains the first.
+            // it is usually the one that explains the first — interrupted or not:
+            // the error path is often exactly what ends a sweep (a reload).
             const verdict = `Sweep done: ${checked}/${size} checked, ${errors} error(s), ${Date.now() - startedAt}ms (check≈${this.avgCheckMs}ms)`;
-            log.info(this.stopped ? `${verdict} — interrupted` : verdict + (lastError ? `, last: ${lastError}` : ""));
+            const tail = lastError ? `, last: ${lastError}` : "";
+            log.info(this.stopped ? `${verdict} — interrupted${tail}` : verdict + tail);
         } catch (e) {
             log.info("Background avatar sweep aborted", e);
         } finally {

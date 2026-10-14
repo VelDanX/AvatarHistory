@@ -48,7 +48,13 @@ export function startAvatarHistory(): void {
         if (settings.store.trackSelf) {
             const self = UserStore.getCurrentUser();
             if (self?.avatar) {
-                void setTracked(self.id, true).then(() => recordUserAvatar(self));
+                // Both links can reject (persistTrackedSet and the store write
+                // inside recordUserAvatar) and nothing else awaits them, so the
+                // chain ends in a catch — otherwise a failed startup record
+                // would surface as an unhandled rejection with no attribution.
+                void setTracked(self.id, true)
+                    .then(() => recordUserAvatar(self))
+                    .catch(e => log.warn("Startup: failed to record own avatar", e));
             }
         }
         void fillHistoryGaps().catch(e => log.warn("Startup gap fill failed", e));

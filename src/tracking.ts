@@ -171,6 +171,11 @@ export async function fillHistoryGaps(): Promise<void> {
 export async function resetAndResync(): Promise<void> {
     const self = UserStore.getCurrentUser();
     await resetAllHistory();
+    // The attempt ledger outlives a reset: without clearing it, the same
+    // user+hash would be silently skipped for up to AVATAR_ATTEMPT_TTL_MS
+    // right after the history it guarded was erased. resetAllHistory cannot
+    // reach it (different module), so it is cleared here, next to the reset.
+    avatarAttempts.clear();
     Toasts.show({ message: "AvatarHistory: history cleared", type: Toasts.Type.SUCCESS, id: Toasts.genId() });
     if (settings.store.trackSelf && self) {
         // resetAllHistory also cleared the tracked set — restore self.
