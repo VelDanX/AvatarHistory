@@ -20,13 +20,14 @@ import {
     parseImport,
     recordAvatarSeen
 } from "../../store";
+import { recordCdnSize } from "../useAvatarImage";
 
 export async function downloadAvatar(userId: string, rec: AvatarRecord): Promise<void> {
     const blob = await fetchAvatarBlob(userId, rec);
     // Best quality first — the same preference fetchAvatarBlob uses. A dead
     // best-size is copied rather than worked around: the user gets a URL, not a
     // file, and any other size would be a guess too.
-    const url = buildAvatarUrl(userId, rec.hash, rec.format, BLOB_FETCH_SIZES[0], rec.avatarId);
+    const url = buildAvatarUrl(userId, rec.hash, rec.format, recordCdnSize(rec, BLOB_FETCH_SIZES[0]), rec.avatarId);
     if (!blob) {
         copyWithToast(url, "Failed to load image, copied URL instead");
         return;

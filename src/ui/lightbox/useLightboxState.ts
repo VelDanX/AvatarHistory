@@ -51,6 +51,7 @@ export function useLightboxState(userId: string, initialIndex: number, onClose: 
                 target.closest?.("[data-nav]")
                 || target.closest?.("[data-thumb]")
                 || target.closest?.(`.${cl("lb-toolbar")}`)
+                || target.closest?.(`.${cl("lb-img")}`)
                 || target.closest?.(`.${cl("lb-confirm")}`)
                 || target.closest?.(`.${cl("lb-menu")}`)
             ) return;

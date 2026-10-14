@@ -6,15 +6,29 @@
 
 import { useEffect, useRef, useState } from "@webpack/common";
 
-import { buildAvatarUrlFallbacks } from "../cdnUrl";
+import { buildAvatarUrlFallbacks, sizesCappedToNative } from "../cdnUrl";
 import { CDN_CHECK_TIMEOUT_MS } from "../config";
 import { AvatarRecord, getBlobObjectUrl } from "../store";
 import { unavailableAvatarDataUrl } from "./avatarPlaceholder";
 
 /** CDN sizes tried for a thumbnail, smallest first (it renders at ~96px). */
 export const THUMB_SIZES = [96, 256, 512, 1024];
-/** CDN sizes tried for the lightbox stage, largest first (it renders at 1024px). */
+/** CDN sizes tried for the lightbox stage, largest first (it renders at 1024px).
+ *  A record whose measured size is smaller is asked for that size instead — see
+ *  sizesCappedToNative. */
 export const STAGE_SIZES = [1024, 512, 256, 96];
+
+/** The record's measured resolution, 0 until its blob has been decoded. */
+function nativeSizeOf(rec: AvatarRecord): number {
+    return Math.max(rec.width || 0, rec.height || 0);
+}
+
+/** CDN size to ask for a record, capped at `target`: an avatar smaller than the
+ *  target is requested at its own bucket so the request (and any copied URL or
+ *  saved file built from it) never claims more than the source has. */
+export function recordCdnSize(rec: AvatarRecord, target: number): number {
+    return sizesCappedToNative([target], nativeSizeOf(rec))[0];
+}
 
 /** 1x1 transparent GIF. Reassigning it to an Image() aborts that image's
  *  in-flight download — used to cut probe losers off once a winner is known. */
@@ -145,7 +159,7 @@ export function useAvatarImage(
     onLoad(e: { currentTarget: HTMLImageElement }): void;
     onError(e: { currentTarget: HTMLImageElement }): void;
 } {
-    const fallbacks = buildAvatarUrlFallbacks(userId, rec.hash, rec.format, rec.avatarId, sizes);
+    const fallbacks = buildAvatarUrlFallbacks(userId, rec.hash, rec.format, rec.avatarId, sizesCappedToNative(sizes, nativeSizeOf(rec)));
     const placeholder = unavailableAvatarDataUrl(rec);
 
     const [shown, setShown] = useState(() => fallbacks[0]);

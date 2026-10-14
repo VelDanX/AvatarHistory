@@ -12,6 +12,9 @@ import {
     openModal,
     showToast,
     Toasts,
+    useCallback,
+    useEffect,
+    useRef,
     UserStore,
     useState
 } from "@webpack/common";
@@ -24,7 +27,7 @@ import {
     setTracked,
     useTrackedUsers
 } from "../../store";
-import { STAGE_SIZES, useAvatarImage } from "../useAvatarImage";
+import { recordCdnSize, STAGE_SIZES, useAvatarImage } from "../useAvatarImage";
 import { applyAvatar, downloadAvatar, exportHistoryFile, importHistoryFile, rememberCurrentAvatar } from "./actions";
 import { AvatarRail } from "./AvatarRail";
 import { ConfirmBar } from "./ConfirmBar";
@@ -59,21 +62,134 @@ export function openAvatarLightbox(userId: string, initialIndex = 0): void {
     });
 }
 
+/** Largest scale the stage image zooms to; 1 is the fit size. */
+const ZOOM_MIN = 1;
+const ZOOM_MAX = 4;
+/** Scale a double-click jumps to from the fit size. */
+const ZOOM_CLICK = 2;
+
+function clamp(v: number, min: number, max: number): number {
+    return Math.min(max, Math.max(min, v));
+}
+
+/** How far the image may be panned at `scale` before its edge leaves the stage.
+ *  The stage padding is 24px (see .vc-avh-lb-stage). */
+function panLimits(el: HTMLImageElement, scale: number): { x: number; y: number; } {
+    const stage = el.parentElement;
+    if (!stage) return { x: 0, y: 0 };
+    return {
+        x: Math.max(0, (el.offsetWidth * scale - (stage.clientWidth - 48)) / 2),
+        y: Math.max(0, (el.offsetHeight * scale - (stage.clientHeight - 48)) / 2),
+    };
+}
+
 /** Main stage image. Mounted with a `key` on `rec.hash`: the stored-copy fetch
- *  and the CDN fallback chain both belong to a single record. */
+ *  and the CDN fallback chain both belong to a single record. The wheel zooms
+ *  around the cursor, a double-click jumps toward the pointer (again to reset),
+ *  and dragging pans — all clipped to the stage. */
 function StageImage({ userId, rec, onContextMenu }: {
     userId: string;
     rec: AvatarRecord;
     onContextMenu(e: React.MouseEvent): void;
 }) {
     const { src, onLoad, onError } = useAvatarImage(userId, rec, STAGE_SIZES);
+    const imgRef = useRef<HTMLImageElement | null>(null);
+    const viewRef = useRef({ s: ZOOM_MIN, x: 0, y: 0 });
+    const [view, setView] = useState(viewRef.current);
+    const [panning, setPanning] = useState(false);
+    const drag = useRef<{ x: number; y: number; panX: number; panY: number; } | null>(null);
+
+    const applyView = useCallback((next: { s: number; x: number; y: number; }): void => {
+        viewRef.current = next;
+        setView(next);
+    }, []);
+
+    // Zoom keeping the point under (px, py) fixed. The stage is never
+    // transformed, so its centre is the image's untransformed centre even while
+    // a transform transition is still running.
+    const zoomAt = useCallback((target: number, px: number, py: number): void => {
+        const el = imgRef.current;
+        const stage = el?.parentElement;
+        if (!el || !stage) return;
+        const scale = clamp(target, ZOOM_MIN, ZOOM_MAX);
+        const cur = viewRef.current;
+        if (scale <= ZOOM_MIN) {
+            applyView({ s: ZOOM_MIN, x: 0, y: 0 });
+            return;
+        }
+        const rect = stage.getBoundingClientRect();
+        const cx = (rect.left + rect.right) / 2;
+        const cy = (rect.top + rect.bottom) / 2;
+        const k = scale / cur.s;
+        const lim = panLimits(el, scale);
+        // Anchor the pointer: T' = k*T + (pointer - centre)*(1 - k).
+        applyView({
+            s: scale,
+            x: clamp(cur.x * k + (px - cx) * (1 - k), -lim.x, lim.x),
+            y: clamp(cur.y * k + (py - cy) * (1 - k), -lim.y, lim.y),
+        });
+    }, [applyView]);
+
+    // Native non-passive listener so zooming the wheel doesn't scroll the app.
+    useEffect(() => {
+        const el = imgRef.current;
+        if (!el) return;
+        const onWheel = (e: WheelEvent): void => {
+            e.preventDefault();
+            const step = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? 100 : 1;
+            zoomAt(viewRef.current.s * Math.exp(-e.deltaY * step * 0.0015), e.clientX, e.clientY);
+        };
+        el.addEventListener("wheel", onWheel, { passive: false });
+        return () => el.removeEventListener("wheel", onWheel);
+    }, [zoomAt]);
+
+    const zoomed = view.s > ZOOM_MIN + 0.01;
+
+    const onDoubleClick = (e: React.MouseEvent<HTMLImageElement>): void => {
+        if (zoomed) applyView({ s: ZOOM_MIN, x: 0, y: 0 });
+        else zoomAt(ZOOM_CLICK, e.clientX, e.clientY);
+    };
+
+    const onPointerDown = (e: React.PointerEvent<HTMLImageElement>): void => {
+        if (!zoomed) return;
+        e.preventDefault();
+        e.currentTarget.setPointerCapture(e.pointerId);
+        drag.current = { x: e.clientX, y: e.clientY, panX: viewRef.current.x, panY: viewRef.current.y };
+        setPanning(true);
+    };
+
+    const onPointerMove = (e: React.PointerEvent<HTMLImageElement>): void => {
+        const d = drag.current;
+        if (!d) return;
+        const lim = panLimits(e.currentTarget, viewRef.current.s);
+        applyView({
+            s: viewRef.current.s,
+            x: clamp(d.panX + e.clientX - d.x, -lim.x, lim.x),
+            y: clamp(d.panY + e.clientY - d.y, -lim.y, lim.y),
+        });
+    };
+
+    const onPointerUp = (e: React.PointerEvent<HTMLImageElement>): void => {
+        drag.current = null;
+        setPanning(false);
+        if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+            e.currentTarget.releasePointerCapture(e.pointerId);
+        }
+    };
 
     return (
         <img
-            className={cl("lb-img")}
+            ref={imgRef}
+            className={cl("lb-img", zoomed && "zoomed", panning && "panning")}
             src={src}
             alt="avatar"
             draggable={false}
+            style={{ transform: `translate(${view.x}px, ${view.y}px) scale(${view.s})` }}
+            onDoubleClick={onDoubleClick}
+            onPointerDown={onPointerDown}
+            onPointerMove={onPointerMove}
+            onPointerUp={onPointerUp}
+            onPointerCancel={onPointerUp}
             onLoad={onLoad}
             onError={onError}
             onContextMenu={onContextMenu}
@@ -168,9 +284,10 @@ function AvatarLightbox({ userId, initialIndex, modalProps }: { userId: string; 
     if (!rec) return null;
 
     const date = moment(rec.timestamp);
-    // For the "copy URL" action, not for display: STAGE_SIZES[0] is the size
-    // the stage itself asks for, so the copied link is the one on screen.
-    const cdnUrl = buildAvatarUrl(userId, rec.hash, rec.format, STAGE_SIZES[0], rec.avatarId);
+    // For the "copy URL" action, not for display: the size the stage itself
+    // asks for, capped at the avatar's own resolution, so the copied link is
+    // the one on screen and never claims a size the source does not have.
+    const cdnUrl = buildAvatarUrl(userId, rec.hash, rec.format, recordCdnSize(rec, STAGE_SIZES[0]), rec.avatarId);
     const off = date.utcOffset();
     const tz = `${off < 0 ? "-" : "+"}${Math.floor(Math.abs(off) / 60)}${Math.abs(off) % 60 ? `:${String(Math.abs(off) % 60).padStart(2, "0")}` : ""}`;
 

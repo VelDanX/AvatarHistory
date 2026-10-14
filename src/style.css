@@ -318,7 +318,13 @@
 
 .vc-avh-lb-stage {
     position: absolute;
-    inset: 0;
+    top: 0;
+    right: 0;
+    left: 0;
+    /* Stop just above the nav arrows (bottom: 204px + 44px height), which in
+     * turn sit over the rail, so the image never reaches the thumbnails. */
+    bottom: 252px;
+    container-type: size;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -328,13 +334,35 @@
 
 .vc-avh-lb-img {
     pointer-events: auto;
-    max-width: 82vw;
-    max-height: 72vh;
+    /* One square for every avatar, whatever its stored resolution, so 256px
+     * and 1024px avatars look the same size while the sharper source still
+     * looks sharper. Capped between 512 and 1024 so it never fills huge
+     * screens edge to edge. */
+    width: min(100cqw, 100cqh, 768px);
+    height: min(100cqw, 100cqh, 768px);
     border-radius: 16px;
     object-fit: contain;
     box-shadow: 0 24px 64px rgb(0 0 0 / 60%);
     animation: vc-avh-lb-zoom-in 180ms ease-out;
+    /* Smooth wheel/double-click zoom; disabled while dragging (see .panning). */
+    transition: transform 160ms ease-out;
     user-select: none;
+}
+
+/* Zoom (wheel + double-click): the image gets an inline scale/offset (see
+ * StageImage) and is clipped to the stage; drag to pan. */
+.vc-avh-lb-img.vc-avh-zoomed {
+    cursor: grab;
+    box-shadow: none;
+}
+
+.vc-avh-lb-img.vc-avh-panning {
+    transition: none;
+    cursor: grabbing;
+}
+
+.vc-avh-lb-stage:has(.vc-avh-lb-img.vc-avh-zoomed) {
+    overflow: hidden;
 }
 
 @keyframes vc-avh-lb-zoom-in {
@@ -344,7 +372,7 @@
 
 .vc-avh-lb-nav-btn {
     position: absolute;
-    bottom: 260px;
+    bottom: 204px;
     z-index: 40;
     width: 44px;
     height: 44px;
@@ -531,7 +559,7 @@
     position: absolute;
     left: 0;
     right: 0;
-    bottom: 150px;
+    bottom: 100px;
     height: 96px;
     display: flex;
     align-items: center;
