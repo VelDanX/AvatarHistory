@@ -72,21 +72,22 @@ function clamp(v: number, min: number, max: number): number {
     return Math.min(max, Math.max(min, v));
 }
 
-/** How far the image may be panned at `scale` before its edge leaves the stage.
- *  The stage padding is 24px (see .vc-avh-lb-stage). */
+/** How far the image may be panned at `scale` before its edge leaves the
+ *  frame. The frame is the visible square the image is clipped to. */
 function panLimits(el: HTMLImageElement, scale: number): { x: number; y: number; } {
-    const stage = el.parentElement;
-    if (!stage) return { x: 0, y: 0 };
+    const frame = el.parentElement;
+    if (!frame) return { x: 0, y: 0 };
     return {
-        x: Math.max(0, (el.offsetWidth * scale - (stage.clientWidth - 48)) / 2),
-        y: Math.max(0, (el.offsetHeight * scale - (stage.clientHeight - 48)) / 2),
+        x: Math.max(0, (el.offsetWidth * scale - frame.clientWidth) / 2),
+        y: Math.max(0, (el.offsetHeight * scale - frame.clientHeight) / 2),
     };
 }
 
 /** Main stage image. Mounted with a `key` on `rec.hash`: the stored-copy fetch
  *  and the CDN fallback chain both belong to a single record. The wheel zooms
- *  around the cursor, a double-click jumps toward the pointer (again to reset),
- *  and dragging pans — all clipped to the stage. */
+ *  around the cursor and a double-click jumps toward the pointer (again to
+ *  reset); dragging pans. The image is magnified inside its frame and never
+ *  leaves it. */
 function StageImage({ userId, rec, onContextMenu }: {
     userId: string;
     rec: AvatarRecord;
@@ -104,20 +105,20 @@ function StageImage({ userId, rec, onContextMenu }: {
         setView(next);
     }, []);
 
-    // Zoom keeping the point under (px, py) fixed. The stage is never
+    // Zoom keeping the point under (px, py) fixed. The frame is never
     // transformed, so its centre is the image's untransformed centre even while
     // a transform transition is still running.
     const zoomAt = useCallback((target: number, px: number, py: number): void => {
         const el = imgRef.current;
-        const stage = el?.parentElement;
-        if (!el || !stage) return;
+        const frame = el?.parentElement;
+        if (!el || !frame) return;
         const scale = clamp(target, ZOOM_MIN, ZOOM_MAX);
         const cur = viewRef.current;
         if (scale <= ZOOM_MIN) {
             applyView({ s: ZOOM_MIN, x: 0, y: 0 });
             return;
         }
-        const rect = stage.getBoundingClientRect();
+        const rect = frame.getBoundingClientRect();
         const cx = (rect.left + rect.right) / 2;
         const cy = (rect.top + rect.bottom) / 2;
         const k = scale / cur.s;
@@ -178,22 +179,24 @@ function StageImage({ userId, rec, onContextMenu }: {
     };
 
     return (
-        <img
-            ref={imgRef}
-            className={cl("lb-img", zoomed && "zoomed", panning && "panning")}
-            src={src}
-            alt="avatar"
-            draggable={false}
-            style={{ transform: `translate(${view.x}px, ${view.y}px) scale(${view.s})` }}
-            onDoubleClick={onDoubleClick}
-            onPointerDown={onPointerDown}
-            onPointerMove={onPointerMove}
-            onPointerUp={onPointerUp}
-            onPointerCancel={onPointerUp}
-            onLoad={onLoad}
-            onError={onError}
-            onContextMenu={onContextMenu}
-        />
+        <div className={cl("lb-frame")}>
+            <img
+                ref={imgRef}
+                className={cl("lb-img", zoomed && "zoomed", panning && "panning")}
+                src={src}
+                alt="avatar"
+                draggable={false}
+                style={{ transform: `translate(${view.x}px, ${view.y}px) scale(${view.s})` }}
+                onDoubleClick={onDoubleClick}
+                onPointerDown={onPointerDown}
+                onPointerMove={onPointerMove}
+                onPointerUp={onPointerUp}
+                onPointerCancel={onPointerUp}
+                onLoad={onLoad}
+                onError={onError}
+                onContextMenu={onContextMenu}
+            />
+        </div>
     );
 }
 

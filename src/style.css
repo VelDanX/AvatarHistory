@@ -332,37 +332,40 @@
     pointer-events: none;
 }
 
-.vc-avh-lb-img {
-    pointer-events: auto;
-    /* One square for every avatar, whatever its stored resolution, so 256px
-     * and 1024px avatars look the same size while the sharper source still
-     * looks sharper. Capped between 512 and 1024 so it never fills huge
-     * screens edge to edge. */
+/* One square for every avatar, whatever its stored resolution, so 256px and
+ * 1024px avatars look the same size while the sharper source still looks
+ * sharper. Capped between 512 and 1024 so it never fills huge screens edge to
+ * edge. It also clips the zoom, so the magnified image never leaves the square
+ * (it cannot climb onto the info pill or the thumbnails). */
+.vc-avh-lb-frame {
     width: min(100cqw, 100cqh, 768px);
     height: min(100cqw, 100cqh, 768px);
     border-radius: 16px;
-    object-fit: contain;
+    overflow: hidden;
     box-shadow: 0 24px 64px rgb(0 0 0 / 60%);
     animation: vc-avh-lb-zoom-in 180ms ease-out;
+    pointer-events: none;
+}
+
+.vc-avh-lb-img {
+    pointer-events: auto;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
     /* Smooth wheel/double-click zoom; disabled while dragging (see .panning). */
     transition: transform 160ms ease-out;
     user-select: none;
 }
 
 /* Zoom (wheel + double-click): the image gets an inline scale/offset (see
- * StageImage) and is clipped to the stage; drag to pan. */
+ * StageImage) and is clipped to the frame above; drag to pan. */
 .vc-avh-lb-img.vc-avh-zoomed {
     cursor: grab;
-    box-shadow: none;
 }
 
 .vc-avh-lb-img.vc-avh-panning {
     transition: none;
     cursor: grabbing;
-}
-
-.vc-avh-lb-stage:has(.vc-avh-lb-img.vc-avh-zoomed) {
-    overflow: hidden;
 }
 
 @keyframes vc-avh-lb-zoom-in {
