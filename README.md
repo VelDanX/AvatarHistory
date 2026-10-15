@@ -41,6 +41,15 @@ Vencord / Equicord userplugin that passively records avatar changes and lets you
 
 ![Lightbox](docs/screenshots/lightbox.png)
 
+**Setting a saved avatar** — from the Lightbox you can apply any of your own stored avatars as your profile picture (toolbar button or image right-click menu; animated ones need Nitro). Discord confirms it with a green "Avatar updated" toast:
+
+![Setting Avatar — apply a stored avatar as your profile picture](docs/screenshots/set-avatar.jpg)
+![Avatar updated — the green confirmation toast](docs/screenshots/avatar-updated.jpg)
+
+**Zoom** — the fullscreen viewer magnifies an avatar inside its frame with the mouse wheel or a double-click:
+
+[![Set an avatar and zoom — scroll or double-click to magnify (video)](docs/screenshots/set-avatar-zoom.jpg)](docs/screenshots/set-avatar-zoom.mp4)
+
 ## Settings
 
 | Setting | Default | Description |
@@ -49,7 +58,7 @@ Vencord / Equicord userplugin that passively records avatar changes and lets you
 | trackSelf | ✔ | Track your own avatar changes |
 | trackFriends | ✘ | Auto-track avatar changes of all your friends |
 | pollTracked | ✔ | Periodically re-check tracked users' avatars in the background. If disabled, avatars of other tracked users only update when you view their profile |
-| gatewaySync | ✔ | Also read avatars off Discord's gateway stream (`USER_UPDATE`, `GUILD_MEMBER_UPDATE`, `MESSAGE_CREATE`, `PRESENCE_UPDATES`): changes of tracked users are caught in the background, even for profiles you never open and messages you never scroll to. With this on, the Auto poll interval becomes a floor of 5 minutes — the sweep is a safety net for what events miss, not the primary source |
+| gatewaySync | ✔ | Also read avatars off Discord's gateway stream (`USER_UPDATE`, `GUILD_MEMBER_UPDATE`, `MESSAGE_CREATE`, `PRESENCE_UPDATES`): changes of tracked users are caught in the background, even for profiles you never open and messages you never scroll to. With this on, the Auto poll interval becomes a floor of 5 minutes — the sweep is a safety net for what events miss, not the primary source. With it off, none of these four events are read: the sweep, avatars the client renders, and your own avatar changes (trackSelf) are what remains |
 | pollIntervalMode | Auto | Interval mode: **Auto** tunes the re-check interval to the number of tracked users (30 s – 30 min, or 5 min – 30 min with gatewaySync on); **Manual** shows a seconds input pre-filled with the interval Auto currently picks |
 | pollIntervalSeconds | 30 s (Manual only) | Fixed re-check interval in seconds — only shown when the mode is set to Manual. Auto never overwrites it; it is yours |
 
@@ -204,6 +213,15 @@ refactor cannot break the rest of the plugin.
 
 ![Лайтбокс](docs/screenshots/lightbox.png)
 
+**Установка сохранённого аватара** — прямо в лайтбоксе можно поставить любой из своих сохранённых аватаров как аватар профиля (кнопка на панели или ПКМ по картинке; для анимированных нужен Nitro). Discord подтверждает зелёным уведомлением «Avatar updated»:
+
+![Установка аватара — применить сохранённый аватар как аватар профиля](docs/screenshots/set-avatar.jpg)
+![Avatar updated — зелёное уведомление о подтверждении](docs/screenshots/avatar-updated.jpg)
+
+**Зум** — полноэкранный просмотрщик увеличивает аватар внутри рамки колесом мыши или двойным кликом:
+
+[![Установка аватара и зум — скролл или двойной клик для увеличения (видео)](docs/screenshots/set-avatar-zoom.jpg)](docs/screenshots/set-avatar-zoom.mp4)
+
 ## Настройки
 
 | Настройка | По умолчанию | Описание |
@@ -212,7 +230,7 @@ refactor cannot break the rest of the plugin.
 | trackSelf | ✔ | Отслеживать свой аватар |
 | trackFriends | ✘ | Автоотслеживание аватаров всех друзей |
 | pollTracked | ✔ | Периодически перепроверять аватарки отслеживаемых в фоне. Если выключено — аватарки других отслеживаемых обновляются только при просмотре их профиля |
-| gatewaySync | ✔ | Дополнительно читать аватарки из гейтвей-потока Discord (`USER_UPDATE`, `GUILD_MEMBER_UPDATE`, `MESSAGE_CREATE`, `PRESENCE_UPDATES`): смены аватарок отслеживаемых ловятся в фоне, даже для профилей, которые ты не открывал, и сообщений, до которых не прокрутил. С включённой настройкой автоинтервал получает флор в 5 минут — свип становится страховкой на то, что события пропустили, а не основным источником |
+| gatewaySync | ✔ | Дополнительно читать аватарки из гейтвей-потока Discord (`USER_UPDATE`, `GUILD_MEMBER_UPDATE`, `MESSAGE_CREATE`, `PRESENCE_UPDATES`): смены аватарок отслеживаемых ловятся в фоне, даже для профилей, которые ты не открывал, и сообщений, до которых не прокрутил. С включённой настройкой автоинтервал получает флор в 5 минут — свип становится страховкой на то, что события пропустили, а не основным источником. При выключении эти события не читаются вообще — остаются свип, аватарки, которые клиент отрисовал, и смены своего аватара (trackSelf) |
 | pollIntervalMode | Auto | Режим интервала: **Auto** подстраивает интервал перепроверки под число отслеживаемых (30 с – 30 мин, а с gatewaySync — 5 мин – 30 мин); **Manual** показывает поле ввода секунд, подставленное с тем интервалом, который Auto выбирает сейчас |
 | pollIntervalSeconds | 30 с (только Manual) | Фиксированный интервал перепроверки в секундах — показывается только в режиме Manual. Auto его не перезаписывает, это ваше значение |
 
