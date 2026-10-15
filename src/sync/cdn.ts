@@ -7,7 +7,7 @@
 import { Logger } from "@utils/Logger";
 
 import { buildAvatarUrl } from "../cdnUrl";
-import { CDN_CHECK_TIMEOUT_MS, CDN_CONTROL_TTL_MS } from "../config";
+import { CDN_CHECK_TIMEOUT_MS, CDN_CONTROL_TTL_MS, GAP_FILL_STAGGER_MS } from "../config";
 import { getHistory, removeRecord } from "../store";
 
 const log = new Logger("AvatarHistory");
@@ -31,7 +31,10 @@ export const defaultCdnExistsChecker: CdnExistsChecker = (userId, hash, formats,
  * recording flow records optimistically and the purge flow keeps the record.
  */
 export async function checkCdnExists(userId: string, hash: string, formats: Array<"png" | "gif" | "webp">, avatarId?: string): Promise<boolean | null> {
-    const key = `${userId}:${hash}:${avatarId ?? ""}`;
+    // The format list belongs in the key: the same hash is probed with
+    // different lists (tracking vs sniffer/purge) and the verdict follows
+    // the list probed — a shared entry would hand one caller the other's.
+    const key = `${userId}:${hash}:${avatarId ?? ""}:${formats.join(",")}`;
     const existing = pendingCdnChecks.get(key);
     if (existing) return existing;
     const promise = cdnAvatarExists(userId, hash, formats, avatarId).finally(() => {
@@ -132,7 +135,14 @@ export async function cdnAvatarExists(userId: string, hash: string, formats: Arr
 export async function purgeInvalidRecords(userId: string, checker: CdnExistsChecker = defaultCdnExistsChecker): Promise<number> {
     const recs = getHistory(userId).filter(r => !r.hasBlob);
     let removed = 0;
+    // Paced like every other record walk (fillHistoryGaps, the sweep): one
+    // blob-less record can cost six back-to-back CDN probes, and purge runs
+    // at startup and after every server pull. Between records, not after —
+    // a kept record `continue`s past any sleep at the tail of the loop.
+    let paced = false;
     for (const rec of recs) {
+        if (paced) await new Promise(r => setTimeout(r, GAP_FILL_STAGGER_MS));
+        paced = true;
         const formats: Array<"png" | "gif" | "webp"> = rec.format === "gif" ? ["gif", "webp"] : ["png", "webp", "gif"];
         // Only remove on a definitively negative check — never drop a valid
         // record over a flaky network.

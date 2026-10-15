@@ -25,6 +25,31 @@ import {
 
 const log = new Logger("AvatarHistory");
 
+/**
+ * Whether loadStore() has finished reading. Flux events of a *started* plugin
+ * arrive while the read is still in flight, and persistHistory() writes the
+ * whole history object: a record written in that window is either clobbered
+ * by the pending read, or the read is served a payload containing nothing but
+ * that one user and the rest of the history is overwritten with it. The
+ * gateway listeners gate on this, and so do the two flux handlers left in
+ * index.tsx (CURRENT_USER_UPDATE and GUILD_MEMBERS_CHUNK_BATCH — the latter is
+ * the event most likely to land here, since it fires as the member chunks of
+ * a (re)connect arrive).
+ */
+let storeLoaded = false;
+let storeReady: Promise<void> | null = null;
+
+/** Runs `run` once the store has been read — immediately if it already has.
+ *  The callback itself must stay fire-and-forget safe; it is invoked at most
+ *  once per readiness, from a promise continuation. */
+export function whenStoreLoaded(run: () => void): void {
+    if (storeLoaded) {
+        run();
+        return;
+    }
+    void storeReady?.then(run);
+}
+
 /** Owns the plugin's background machinery: settings migration, the sniffer, the
  *  periodic sweep and the one-time store bootstrap. */
 export function startAvatarHistory(): void {
@@ -37,7 +62,7 @@ export function startAvatarHistory(): void {
     );
 
     let resolveReady!: () => void;
-    const storeReady = new Promise<void>(r => resolveReady = r);
+    storeReady = new Promise<void>(r => resolveReady = r);
 
     startRecentSync(isAnyTrackingActive, storeReady, shouldTrack);
     startBackgroundSync(storeReady);
@@ -59,6 +84,7 @@ export function startAvatarHistory(): void {
         }
         void fillHistoryGaps().catch(e => log.warn("Startup gap fill failed", e));
     }).finally(() => {
+        storeLoaded = true;
         resolveReady();
         const self = UserStore.getCurrentUser();
         void pullRecentFromServer();
@@ -69,6 +95,11 @@ export function startAvatarHistory(): void {
 }
 
 export function stopAvatarHistory(): void {
+    // Anything deferred by whenStoreLoaded() would run into a store the next
+    // start() has not loaded yet, and a restart is exactly when the window it
+    // guards reopens.
+    storeLoaded = false;
+    storeReady = null;
     log.info("Stopped");
     stopGatewayTracking();
     stopRecentSync();

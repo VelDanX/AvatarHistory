@@ -12,7 +12,7 @@ import definePlugin from "@utils/types";
 import { User } from "@vencord/discord-types";
 
 import { userContextPatch } from "./src/contextMenu";
-import { startAvatarHistory, stopAvatarHistory } from "./src/services";
+import { startAvatarHistory, stopAvatarHistory, whenStoreLoaded } from "./src/services";
 import { settings } from "./src/settings";
 import { recordUserAvatar, recordUserIfChanged } from "./src/tracking";
 import { AvatarHistoryProfileSection } from "./src/ui/ProfileSection";
@@ -46,31 +46,42 @@ export default definePlugin({
         "user-profile-overflow-menu": userContextPatch,
     },
 
+    // This plugin owns exactly two flux events. USER_UPDATE, PRESENCE_UPDATES
+    // and GUILD_MEMBER_UPDATE are deliberately NOT here: they used to be, and
+    // every one of them then fired twice — once here and once from the gateway
+    // listener of the same event in sync/gateway.ts, which subscribes inside
+    // start() and therefore always first. Only claimAvatarAttempt (tracking.ts)
+    // kept the second pass from probing the CDN again, so the duplicate cost
+    // was pure overhead and no fallback at all: a failed first record stayed
+    // suppressed for the attempt TTL. Those three now live solely in
+    // sync/gateway.ts, gated on the gatewaySync setting, so the flag finally
+    // means what the settings and README say it means. Do not re-add them.
+    //
+    // What remains are the two events the gateway listeners do not read:
     flux: {
-        USER_UPDATE({ user }: { user?: User }) {
-            recordUserQuietly(user, "USER_UPDATE");
-        },
-        PRESENCE_UPDATES({ updates }: { updates?: Array<{ user?: Partial<User>; }> }) {
-            for (const update of updates ?? []) recordUserQuietly(update?.user, "PRESENCE_UPDATES");
-        },
         CURRENT_USER_UPDATE({ user }: { user?: User }) {
             if (!user?.avatar || !settings.store.trackSelf) return;
-            // Not via recordUserIfChanged: that one compares against the newest
-            // stored hash, and this path is the one that has to notice a change
-            // of *your own* avatar — which is precisely a hash the store does not
-            // have yet. Direct, and caught: this is the hottest recording path in
-            // the plugin, firing on every swap you make.
-            recordUserAvatar(user).catch(e => log.warn("CURRENT_USER_UPDATE: failed to record", e));
+            whenStoreLoaded(() =>
+                // Not via recordUserIfChanged: that one compares against the newest
+                // stored hash, and this path is the one that has to notice a change
+                // of *your own* avatar — which is precisely a hash the store does not
+                // have yet. Direct, and caught: this is the hottest recording path in
+                // the plugin, firing on every swap you make.
+                recordUserAvatar(user).catch(e => log.warn("CURRENT_USER_UPDATE: failed to record", e)));
         },
         // Guild member data carries the current avatar hash without any
         // rendering, so a swap is visible before that avatar hits the screen.
-        GUILD_MEMBER_UPDATE({ user }: { user?: Partial<User> }) {
-            recordUserQuietly(user, "GUILD_MEMBER_UPDATE");
-        },
+        // A bulk snapshot rather than a per-change event: it fires once per
+        // guild on (re)connect and fans out over every member, which is also
+        // why it is the one event that can land before loadStore() has read
+        // anything — whenStoreLoaded() below defers it out of that window
+        // instead of persisting over a not-yet-read store.
         GUILD_MEMBERS_CHUNK_BATCH({ chunks }: { chunks?: Array<{ members?: Array<{ user?: Partial<User> }> }> }) {
-            for (const chunk of chunks ?? []) {
-                for (const member of chunk?.members ?? []) recordUserQuietly(member?.user, "GUILD_MEMBERS_CHUNK_BATCH");
-            }
+            whenStoreLoaded(() => {
+                for (const chunk of chunks ?? []) {
+                    for (const member of chunk?.members ?? []) recordUserQuietly(member?.user, "GUILD_MEMBERS_CHUNK_BATCH");
+                }
+            });
         },
     },
 

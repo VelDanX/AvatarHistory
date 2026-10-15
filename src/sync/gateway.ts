@@ -37,6 +37,14 @@ const log = new Logger("AvatarHistory");
  *
  * Every event still goes through `recordUserIfChanged()`, so only tracked
  * users, friends (when enabled) and self are ever recorded.
+ *
+ * These four are the *only* subscribers of USER_UPDATE, PRESENCE_UPDATES and
+ * GUILD_MEMBER_UPDATE in the plugin. The flux hooks in index.tsx used to
+ * subscribe to the same three as well: every event then ran both paths, only
+ * claimAvatarAttempt in tracking.ts kept the second from probing again, and
+ * turning gatewaySync off merely silenced this file while the flux copies kept
+ * recording. Do not re-subscribe them anywhere else — the setting that gates
+ * this listener must be the single switch for these events.
  */
 const SOURCES = {
     USER_UPDATE: (payload: any) => [payload],

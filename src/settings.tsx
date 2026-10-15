@@ -48,7 +48,7 @@ export const settings = definePluginSettings({
     gatewaySync: {
         type: OptionType.BOOLEAN,
         default: true,
-        description: "Also read avatars off Discord's gateway stream (USER_UPDATE, GUILD_MEMBER_UPDATE, MESSAGE_CREATE, PRESENCE_UPDATES): changes of tracked users are caught in the background, even for profiles you never open and messages you never scroll to. With this on, the Auto poll interval becomes a floor of 5 minutes — the sweep is a safety net for what events miss, not the primary source",
+        description: "Also read avatars off Discord's gateway stream (USER_UPDATE, GUILD_MEMBER_UPDATE, MESSAGE_CREATE, PRESENCE_UPDATES): changes of tracked users are caught in the background, even for profiles you never open and messages you never scroll to. With this on, the Auto poll interval becomes a floor of 5 minutes — the sweep is a safety net for what events miss, not the primary source. With it off, none of these four events are read: the sweep, avatars the client renders, and your own avatar changes (trackSelf) are what remains",
         onChange(value) {
             log.info(`Setting gatewaySync → ${value ? "on" : "off"}`);
         },
