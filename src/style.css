@@ -656,13 +656,31 @@
     height: 100%;
     display: flex;
     align-items: center;
-    justify-content: safe center;
+    /* Not `center`: the active thumb has to reach the middle of the rail even
+     * when it is the first or last record, and `safe center` falls back to
+     * flex-start the moment the row overflows — exactly when there is
+     * something to scroll. The two flexible spacers below supply the scroll
+     * range instead, so the active thumbnail is always the centred one. */
+    justify-content: flex-start;
     gap: 10px;
-    padding: 12px 40px;
+    padding: 12px 0;
     overflow-x: auto;
     /* Hidden on purpose: the edge fades below already say there is more to the
      * side, and a scrollbar here would only repeat that in a louder way. */
     scrollbar-width: none;
+}
+
+/* Half a thumb (64 / 2 = 32px) plus one gap (10px) on each side: with these,
+ * scrollTo(0) puts the first thumbnail dead centre and scrollTo(max) the last.
+ * Without them the row cannot scroll far enough to centre either end, so the
+ * first and last records could never be shown in the middle. Real flex items
+ * rather than padding, so the trailing space is always included in the
+ * scrollable overflow. */
+.vc-avh-lb-rail-scroll::before,
+.vc-avh-lb-rail-scroll::after {
+    content: "";
+    flex: 0 0 auto;
+    width: max(0px, calc(50% - 42px));
 }
 
 .vc-avh-lb-rail-scroll::-webkit-scrollbar {
