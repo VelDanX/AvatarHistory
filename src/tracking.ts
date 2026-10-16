@@ -40,7 +40,7 @@ let backgroundSync: BackgroundSync | null = null;
 
 function buildRecord(avatar: string): AvatarRecord {
     return {
-        hash: avatar,
+        hash: avatar.toLowerCase(),
         timestamp: Date.now(),
         format: avatar.startsWith("a_") ? "gif" : "png",
         size: 0,

@@ -24,7 +24,7 @@ Vencord / Equicord userplugin that passively records avatar changes and lets you
 - Profile section with a 4-avatar preview; click opens the fullscreen viewer
 - Lightbox: navigate, download, copy URL, delete, "remember current avatar", and set one of your saved avatars as your profile picture (toolbar button or image right-click menu; animated ones need Nitro)
 - Local copies (blobs, ≤ 10 MB each) are saved the moment an avatar is seen and stay viewable without a network connection, even after the CDN drops it; older entries without a copy are repaired when you open the profile
-- Export / import history as JSON (image data is embedded for entries that have a local copy)
+- Export / import history as JSON from the plugin settings (image data is embedded for entries that have a local copy)
 - Auto-purge of your own records that no longer resolve on the CDN (at startup and on manual sync)
 
 ## Preview
@@ -33,11 +33,11 @@ Vencord / Equicord userplugin that passively records avatar changes and lets you
 
 ![Context menu](docs/screenshots/context-menu.png)
 
-**Profile section** — the user profile modal shows an "Avatar history" section (with an "N recorded" counter) and a preview of the last 4 avatars; clicking any preview opens the fullscreen gallery:
+**Profile section** — the user profile modal shows an "Avatar history" section and a preview of the last 4 avatars, each with its date as a tooltip. The previews themselves are inert: the header is the single clickable target (it opens the gallery at the current avatar) and carries the counter — "1 change" or "N changes". The newest preview is badged "Current", because history is stored newest first:
 
 ![Profile section](docs/screenshots/profile-section.png)
 
-**Lightbox** — fullscreen viewer over the whole history: large preview, a "1 of N" counter, the record timestamp (UTC plus your local offset) and the image size on top, an action bar at the bottom (set as profile avatar, download, copy URL, delete, "More" menu), and a rail of all saved avatars below:
+**Lightbox** — fullscreen viewer over the whole history: large preview, a "1 of N" counter, the record timestamp (UTC plus your local offset), the image size and the live zoom percentage on top, an action bar at the bottom (set as profile avatar, download, copy URL, delete, "More" menu), and a rail of all saved avatars below. The rail scrolls horizontally with no visible scrollbar; an edge fades out whenever thumbnails are cut off on that side:
 
 ![Lightbox](docs/screenshots/lightbox.png)
 
@@ -46,7 +46,7 @@ Vencord / Equicord userplugin that passively records avatar changes and lets you
 ![Setting Avatar — apply a stored avatar as your profile picture](docs/screenshots/set-avatar.jpg)
 ![Avatar updated — the green confirmation toast](docs/screenshots/avatar-updated.jpg)
 
-**Zoom** — the fullscreen viewer magnifies an avatar inside its frame with the mouse wheel or a double-click:
+**Zoom** — the fullscreen viewer magnifies an avatar inside its frame with the mouse wheel or a double-click, and shows the current percentage in the info pill while zoomed:
 
 [![Set an avatar and zoom — scroll or double-click to magnify (video)](docs/screenshots/set-avatar-zoom.jpg)](docs/screenshots/set-avatar-zoom.mp4)
 
@@ -55,6 +55,7 @@ Vencord / Equicord userplugin that passively records avatar changes and lets you
 | Setting | Default | Description |
 | ------- | ------- | ----------- |
 | trackedOverview | — | Live overview of tracked users: count, list with source badges, copyable user IDs, per-user remove buttons |
+| transfer | — | **Export all history (JSON)** and **Import (JSON)**: the whole history of every tracked user, one file. Local image copies are embedded on export and restored on import |
 | trackSelf | ✔ | Track your own avatar changes |
 | trackFriends | ✘ | Auto-track avatar changes of all your friends |
 | pollTracked | ✔ | Periodically re-check tracked users' avatars in the background. If disabled, avatars of other tracked users only update when you view their profile |
@@ -62,7 +63,7 @@ Vencord / Equicord userplugin that passively records avatar changes and lets you
 | pollIntervalMode | Auto | Interval mode: **Auto** tunes the re-check interval to the number of tracked users (30 s – 30 min, or 5 min – 30 min with gatewaySync on); **Manual** shows a seconds input pre-filled with the interval Auto currently picks |
 | pollIntervalSeconds | 30 s (Manual only) | Fixed re-check interval in seconds — only shown when the mode is set to Manual. Auto never overwrites it; it is yours |
 
-The settings screen — toggles for tracking, a live overview of tracked users (avatars, names, source badges, copyable user IDs, per-user remove buttons) and the poll interval mode:
+The settings screen — toggles for tracking, a live overview of tracked users (avatars, names, source badges, copyable user IDs, per-user remove buttons), export / import of the whole history as JSON, and the poll interval mode:
 
 ![Settings](docs/screenshots/settings.png)
 
@@ -149,6 +150,7 @@ avatarHistory/
 │   └── ui/                         # Interface
 │       ├── ProfileSection.tsx      # "Avatar history" section with thumbnails in the profile
 │       ├── TrackedUsersOverview.tsx# Live list of tracked users in settings
+│       ├── HistoryTransfer.tsx     # Export / import of the whole history (settings block)
 │       ├── useAvatarImage.ts       # Shared <img> source: CDN guess → off-screen probe → blob → dated placeholder
 │       ├── avatarPlaceholder.ts    # Dated SVG shown when every source for a record is dead
 │       └── lightbox/
@@ -159,7 +161,7 @@ avatarHistory/
 │           ├── ConfirmBar.tsx      # Inline confirmation of dangerous actions
 │           ├── IconButton.tsx      # Icon button
 │           ├── actions.ts          # Download, apply avatar, export/import
-│           ├── gearMenu.tsx        # Gear menu: tracking, export/import, history reset
+│           ├── gearMenu.tsx        # Gear menu: tracking, per-user history reset
 │           └── imageMenu.tsx       # Right-click menu on the image inside the lightbox
 │
 ├── docs/screenshots/               # Screenshots for the README
@@ -196,7 +198,7 @@ refactor cannot break the rest of the plugin.
 - Секция в профиле с превью 4 аватаров; клик открывает полноэкранный просмотр
 - Лайтбокс: листание, скачивание, копия URL, удаление, «запомнить текущий аватар» и установка любого сохранённого своего аватара как аватар профиля (кнопка на панели или ПКМ по картинке; для анимированных нужен Nitro)
 - Локальные копии (blobs, ≤ 10 МБ каждый) сохраняются в момент, когда аватар увиден, и остаются доступными без подключения к сети даже после удаления аватара с CDN; старые записи без копии докачиваются при открытии профиля
-- Экспорт / импорт истории в JSON (данные картинок встраиваются для записей, у которых есть локальная копия)
+- Экспорт / импорт истории в JSON из настроек плагина (данные картинок встраиваются для записей, у которых есть локальная копия)
 - Автоочистка собственных записей, которых больше нет на CDN (при старте и при ручном синке)
 
 ## Превью
@@ -205,11 +207,11 @@ refactor cannot break the rest of the plugin.
 
 ![Контекстное меню](docs/screenshots/context-menu.png)
 
-**Секция в профиле** — в модалке профиля отображается секция «Avatar history» со счётчиком «N recorded» и превью последних 4 аватаров; клик по любому превью открывает полноэкранную галерею:
+**Секция в профиле** — в модалке профиля отображается секция «Avatar history» и превью последних 4 аватаров, у каждого в подсказке дата. Сами превью не кликабельны: единственная точка входа — шапка (она открывает галерею с текущего аватара), на ней же счётчик — «1 change» или «N changes». Новейшее превью помечено бейджем «Current», потому что история хранится от новых к старым:
 
 ![Секция в профиле](docs/screenshots/profile-section.png)
 
-**Галерея (лайтбокс)** — полноэкранный просмотр всей истории: крупный аватар, счётчик «1 of N», дата записи (UTC + локальный часовой пояс) и размер картинки сверху, панель действий снизу (поставить как аватар профиля для своей истории, скачивание, копия URL, удаление, меню «More») и лента всех сохранённых аватаров:
+**Галерея (лайтбокс)** — полноэкранный просмотр всей истории: крупный аватар, счётчик «1 of N», дата записи (UTC + локальный часовой пояс), размер картинки и текущий процент зума сверху, панель действий снизу (поставить как аватар профиля для своей истории, скачивание, копия URL, удаление, меню «More») и лента всех сохранённых аватаров. Лента прокручивается по горизонтали без видимого скроллбара, а её край затемняется, если с этой стороны аватары обрезаны:
 
 ![Лайтбокс](docs/screenshots/lightbox.png)
 
@@ -218,7 +220,7 @@ refactor cannot break the rest of the plugin.
 ![Установка аватара — применить сохранённый аватар как аватар профиля](docs/screenshots/set-avatar.jpg)
 ![Avatar updated — зелёное уведомление о подтверждении](docs/screenshots/avatar-updated.jpg)
 
-**Зум** — полноэкранный просмотрщик увеличивает аватар внутри рамки колесом мыши или двойным кликом:
+**Зум** — полноэкранный просмотрщик увеличивает аватар внутри рамки колесом мыши или двойным кликом, а пока зум включён, в инфо-пилле сверху виден текущий процент:
 
 [![Установка аватара и зум — скролл или двойной клик для увеличения (видео)](docs/screenshots/set-avatar-zoom.jpg)](docs/screenshots/set-avatar-zoom.mp4)
 
@@ -227,6 +229,7 @@ refactor cannot break the rest of the plugin.
 | Настройка | По умолчанию | Описание |
 | --------- | ------------ | -------- |
 | trackedOverview | — | Живой обзор отслеживаемых: количество, список с бейджами источника, копируемые UserID, кнопки удаления каждого пользователя |
+| transfer | — | **Export all history (JSON)** и **Import (JSON)**: вся история всех отслеживаемых, одним файлом. Локальные копии картинок встраиваются при экспорте и восстанавливаются при импорте |
 | trackSelf | ✔ | Отслеживать свой аватар |
 | trackFriends | ✘ | Автоотслеживание аватаров всех друзей |
 | pollTracked | ✔ | Периодически перепроверять аватарки отслеживаемых в фоне. Если выключено — аватарки других отслеживаемых обновляются только при просмотре их профиля |
@@ -234,7 +237,7 @@ refactor cannot break the rest of the plugin.
 | pollIntervalMode | Auto | Режим интервала: **Auto** подстраивает интервал перепроверки под число отслеживаемых (30 с – 30 мин, а с gatewaySync — 5 мин – 30 мин); **Manual** показывает поле ввода секунд, подставленное с тем интервалом, который Auto выбирает сейчас |
 | pollIntervalSeconds | 30 с (только Manual) | Фиксированный интервал перепроверки в секундах — показывается только в режиме Manual. Auto его не перезаписывает, это ваше значение |
 
-Экран настроек — тоглы отслеживания, живой обзор отслеживаемых (аватары, имена, бейджи источника, копируемые UserID, кнопки удаления каждого пользователя) и режим интервала проверки:
+Экран настроек — тоглы отслеживания, живой обзор отслеживаемых (аватары, имена, бейджи источника, копируемые UserID, кнопки удаления каждого пользователя), экспорт / импорт всей истории в JSON и режим интервала проверки:
 
 ![Настройки](docs/screenshots/settings.png)
 
@@ -323,6 +326,7 @@ avatarHistory/
 │   └── ui/                         # Интерфейс
 │       ├── ProfileSection.tsx      # Секция «Avatar history» с миниатюрами в профиле
 │       ├── TrackedUsersOverview.tsx# Живой список отслеживаемых в настройках
+│       ├── HistoryTransfer.tsx     # Экспорт / импорт всей истории (блок в настройках)
 │       ├── useAvatarImage.ts       # Общий src для <img>: догадка CDN → офскрин-проба → блоб → датированная заглушка
 │       ├── avatarPlaceholder.ts    # SVG с датой записи, когда не сработал ни один источник
 │       └── lightbox/
@@ -333,7 +337,7 @@ avatarHistory/
 │           ├── ConfirmBar.tsx      # Инлайн-подтверждение опасных действий
 │           ├── IconButton.tsx      # Кнопка-иконка
 │           ├── actions.ts          # Скачивание, применение аватара, экспорт/импорт
-│           ├── gearMenu.tsx        # Меню шестерёнки: трекинг, экспорт/импорт, очистка истории
+│           ├── gearMenu.tsx        # Меню шестерёнки: трекинг, очистка истории пользователя
 │           └── imageMenu.tsx       # ПКМ по картинке внутри лайтбокса
 │
 ├── docs/screenshots/               # Скриншоты для README

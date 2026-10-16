@@ -168,6 +168,41 @@
     color: #faa61a;
 }
 
+.vc-avh-transfer {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    width: 100%;
+}
+
+.vc-avh-transfer-btn {
+    height: 32px;
+    padding: 0 14px;
+    border: none;
+    border-radius: 8px;
+    background: var(--background-modifier-active);
+    color: var(--text-normal);
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease;
+}
+
+.vc-avh-transfer-btn:hover {
+    background: var(--background-modifier-hover);
+    color: var(--white-500);
+}
+
+.vc-avh-transfer-btn:disabled {
+    opacity: 0.6;
+    cursor: default;
+}
+
+/* The picker for Import: driven by its button, never shown itself. */
+.vc-avh-transfer-input {
+    display: none;
+}
+
 .vc-avh-profile-header {
     display: flex;
     align-items: center;
@@ -239,7 +274,12 @@
 }
 
 .vc-avh-profile-thumb:hover {
-    opacity: 0.8;
+    opacity: 0.85;
+}
+
+.vc-avh-profile-thumb:focus-visible {
+    outline: 2px solid var(--interactive-active);
+    outline-offset: 2px;
 }
 
 .vc-avh-lightbox-backdrop {
@@ -311,9 +351,33 @@
     color: var(--text-muted);
 }
 
+/* The pill reads as two chunks, split by a hairline: where you are in the
+ * history plus how far the frame is zoomed on the left, the record's own
+ * metadata on the right. */
+.vc-avh-lb-position {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 8px;
+}
+
+.vc-avh-lb-sep {
+    align-self: center;
+    width: 1px;
+    height: 14px;
+    background: rgb(255 255 255 / 14%);
+}
+
 .vc-avh-lb-counter {
     font-weight: 700;
     color: var(--text-muted);
+}
+
+/* Live zoom readout from the stage image, always shown (100% is the fit size).
+ * Tabular figures stop the percentage from reflowing the pill while zooming. */
+.vc-avh-lb-zoom {
+    font-weight: 700;
+    color: var(--text-muted);
+    font-variant-numeric: tabular-nums;
 }
 
 .vc-avh-lb-stage {
@@ -321,22 +385,24 @@
     top: 0;
     right: 0;
     left: 0;
-    /* Stop just above the nav arrows (bottom: 204px + 44px height), which in
-     * turn sit over the rail, so the image never reaches the thumbnails. */
+    /* Stop just above the rail (bottom: 100px + 96px height), so the frame
+     * never overlaps the thumbnails. */
     bottom: 252px;
     container-type: size;
     display: flex;
     align-items: center;
     justify-content: center;
+    /* Fixed distance between the nav buttons and the frame at any width. */
+    gap: 14px;
     padding: 24px;
     pointer-events: none;
 }
 
 /* One square for every avatar, whatever its stored resolution, so 256px and
  * 1024px avatars look the same size while the sharper source still looks
- * sharper. Capped between 512 and 1024 so it never fills huge screens edge to
- * edge. It also clips the zoom, so the magnified image never leaves the square
- * (it cannot climb onto the info pill or the thumbnails). */
+ * sharper. Capped at 768px so it never fills huge screens edge to edge. It also
+ * clips the zoom, so the magnified image never leaves the square (it cannot
+ * climb onto the info pill or the thumbnails). */
 .vc-avh-lb-frame {
     width: min(100cqw, 100cqh, 768px);
     height: min(100cqw, 100cqh, 768px);
@@ -345,6 +411,16 @@
     box-shadow: 0 24px 64px rgb(0 0 0 / 60%);
     animation: vc-avh-lb-zoom-in 180ms ease-out;
     pointer-events: none;
+}
+
+/* With an arrow on each side the frame gives up their width (2 × 44px) and the
+ * two gaps (2 × 14px) = 116px, with 24px of slack, so the arrows always sit
+ * against the frame without ever covering it or spilling out of the stage. A
+ * one-record history renders no arrows (see `.has-nav`) and keeps the whole
+ * square. */
+.vc-avh-lb-stage.vc-avh-has-nav .vc-avh-lb-frame {
+    width: min(100cqw - 140px, 100cqh, 768px);
+    height: min(100cqw - 140px, 100cqh, 768px);
 }
 
 .vc-avh-lb-img {
@@ -374,8 +450,10 @@
 }
 
 .vc-avh-lb-nav-btn {
-    position: absolute;
-    bottom: 204px;
+    /* A flex item of .lb-stage, so it hugs the frame at any window width.
+     * Relative, not absolute: its ::after tooltip anchors to it. */
+    position: relative;
+    flex: 0 0 auto;
     z-index: 40;
     width: 44px;
     height: 44px;
@@ -388,11 +466,10 @@
     display: flex;
     align-items: center;
     justify-content: center;
+    /* The stage itself is pointer-events: none. */
+    pointer-events: auto;
     transition: background 0.15s ease, color 0.15s ease;
 }
-
-.vc-avh-lb-nav-btn.vc-avh-prev { left: calc(50% - 240px); }
-.vc-avh-lb-nav-btn.vc-avh-next { right: calc(50% - 240px); }
 
 .vc-avh-lb-nav-btn::after {
     content: attr(data-tip);
@@ -500,7 +577,9 @@
 
 .vc-avh-lb-confirm {
     position: absolute;
-    bottom: 100px;
+    /* Sits in the rail's slot (bottom: 100px + 96px height) rather than on top
+     * of the thumbnails; the rail itself fades out (see .vc-avh-confirming). */
+    bottom: 124px;
     left: 50%;
     transform: translateX(-50%);
     z-index: 60;
@@ -558,24 +637,90 @@
     background: #f23f43;
 }
 
+/* The frame, not the scroller. It stays put so the two fades below do not
+ * slide away with the thumbnails, and it clips them to the rail's bounds. */
 .vc-avh-lb-rail {
     position: absolute;
     left: 0;
     right: 0;
     bottom: 100px;
     height: 96px;
+    overflow: hidden;
+    z-index: 2;
+    pointer-events: auto;
+    /* Faded out while a confirm bar takes its slot. */
+    transition: opacity 0.15s ease;
+}
+
+.vc-avh-lb-rail-scroll {
+    height: 100%;
     display: flex;
     align-items: center;
     justify-content: safe center;
     gap: 10px;
     padding: 12px 40px;
     overflow-x: auto;
-    z-index: 2;
-    pointer-events: auto;
+    /* Hidden on purpose: the edge fades below already say there is more to the
+     * side, and a scrollbar here would only repeat that in a louder way. */
+    scrollbar-width: none;
 }
 
-.vc-avh-lb-rail::-webkit-scrollbar {
+.vc-avh-lb-rail-scroll::-webkit-scrollbar {
     height: 0;
+}
+
+/* Fade hints for whatever the 40px horizontal padding is currently cutting
+ * off. Painted above the thumbnails, never above the pointer. Each one spans
+ * the scroller's padding, so at rest it lies on empty space and only starts
+ * eating into thumbnails once they scroll underneath it. */
+.vc-avh-lb-rail::before,
+.vc-avh-lb-rail::after {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    z-index: 1;
+    width: 40px;
+    content: "";
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.15s ease;
+}
+
+.vc-avh-lb-rail::before {
+    left: 0;
+    background: linear-gradient(
+        to right,
+        rgb(0 0 0 / 58%) 0,
+        rgb(0 0 0 / 42%) 35%,
+        rgb(0 0 0 / 16%) 70%,
+        transparent 100%
+    );
+}
+
+.vc-avh-lb-rail::after {
+    right: 0;
+    background: linear-gradient(
+        to left,
+        rgb(0 0 0 / 58%) 0,
+        rgb(0 0 0 / 42%) 35%,
+        rgb(0 0 0 / 16%) 70%,
+        transparent 100%
+    );
+}
+
+/* Only where content is actually scrolled out of view, and only when there is
+ * any to begin with. */
+.vc-avh-lb-rail.vc-avh-overflow-start::before,
+.vc-avh-lb-rail.vc-avh-overflow-end::after {
+    opacity: 1;
+}
+
+/* A confirm bar owns the rail's slot, so the thumbnails step aside. They stay
+ * in the DOM: keyboard focus and the registerActiveRef rail.scrollTo keep
+ * working, and a click can no longer land on an invisible thumbnail. */
+.vc-avh-confirming .vc-avh-lb-rail {
+    opacity: 0;
+    pointer-events: none;
 }
 
 .vc-avh-lb-thumb {

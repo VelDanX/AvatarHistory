@@ -43,7 +43,7 @@ export async function rememberCurrentAvatar(userId: string): Promise<boolean> {
     const avatar = UserStore.getUser(userId)?.avatar;
     if (!avatar) return false;
     const rec: AvatarRecord = {
-        hash: avatar,
+        hash: avatar.toLowerCase(),
         timestamp: Date.now(),
         format: avatar.startsWith("a_") ? "gif" : "png",
         size: 0,

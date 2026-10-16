@@ -10,6 +10,7 @@ import { OptionType } from "@utils/types";
 
 import { DEFAULT_POLL_INTERVAL_MINUTES, DEFAULT_POLL_INTERVAL_SECONDS } from "./config";
 import { autoPollIntervalMs } from "./poll";
+import { HistoryTransfer } from "./ui/HistoryTransfer";
 // Intentional cycle settings <-> TrackedUsersOverview. Both sides touch the other
 // only at runtime, never at module evaluation. Same rule as store/history.ts.
 import { TrackedUsersOverview } from "./ui/TrackedUsersOverview";
@@ -20,6 +21,10 @@ export const settings = definePluginSettings({
     trackedOverview: {
         type: OptionType.COMPONENT,
         component: () => <TrackedUsersOverview />,
+    },
+    transfer: {
+        type: OptionType.COMPONENT,
+        component: () => <HistoryTransfer />,
     },
     trackSelf: {
         type: OptionType.BOOLEAN,

@@ -125,12 +125,26 @@ async function measureBlob(userId: string, rec: AvatarRecord, blob: Blob): Promi
     const url = URL.createObjectURL(blob);
     try {
         const img = new Image();
-        await new Promise<void>((resolve, reject) => {
-            img.onload = () => resolve();
-            img.onerror = () => reject(new Error("decode failed"));
+        // Bounded like every other remote wait in the plugin (fetchAvatarBlob,
+        // probeCandidates): an Image that fires neither onload nor onerror
+        // would otherwise leave this object URL un-revoked forever — the
+        // revoke below sits in a finally that only runs once the promise settles.
+        const state = { timer: undefined as ReturnType<typeof setTimeout> | undefined };
+        await new Promise<void>(resolve => {
+            const finish = (): void => {
+                clearTimeout(state.timer);
+                img.onload = null;
+                img.onerror = null;
+                resolve();
+            };
+            state.timer = setTimeout(finish, BLOB_FETCH_TIMEOUT_MS);
+            img.onload = finish;
+            img.onerror = finish;
             img.src = url;
         });
-        updateRecord(userId, rec, { width: img.naturalWidth, height: img.naturalHeight });
+        // naturalWidth stays 0 until a real decode, so an error or the timeout
+        // leaves the record's dimensions unpatched instead of writing 0, 0.
+        if (img.naturalWidth) updateRecord(userId, rec, { width: img.naturalWidth, height: img.naturalHeight });
     } catch (e) {
         log.debug("measureBlob failed", userId, rec.hash, e);
     } finally {

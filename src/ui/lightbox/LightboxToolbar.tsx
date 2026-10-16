@@ -46,7 +46,7 @@ export function LightboxToolbar({
                 </IconButton>
             )}
             <IconButton
-                tooltip={rec.hasBlob ? "Download (offline copy saved)" : "Download"}
+                tooltip="Download"
                 className={cl("lb-btn", rec.hasBlob && "has-blob")}
                 onClick={onDownload}
             >

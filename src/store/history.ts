@@ -63,6 +63,19 @@ export function updateRecord(userId: string, rec: AvatarRecord, patch: Partial<A
     const i = entry.records.findIndex(r => r === rec || sameHash(r.hash, rec.hash));
     if (i === -1) return;
     const base = entry.records[i];
+    // No-op guard. The cached-blob read path (fetchAvatarBlob) and repeated
+    // identical patches (hasBlob/size/width/height/avatarId) otherwise rebuild
+    // the records array, re-serialize the *whole* history and notify on every
+    // profile/lightbox open — a write that changes nothing but the store cost.
+    // Keyed compare so a new patched field stays covered automatically.
+    let changed = false;
+    for (const k of Object.keys(patch) as Array<keyof AvatarRecord>) {
+        if (base[k] !== patch[k]) {
+            changed = true;
+            break;
+        }
+    }
+    if (!changed) return;
     writeRecord(userId, entry, i, { ...base, ...patch });
 }
 
@@ -70,7 +83,7 @@ function writeRecord(userId: string, entry: UserHistory, i: number, next: Avatar
     const records = entry.records.slice();
     records[i] = next;
     history[userId] = { records, lastSeenAt: entry.lastSeenAt };
-    void persistHistory();
+    markHistoryDirty();
     notifyListeners();
 }
 
@@ -133,8 +146,60 @@ export async function loadStore(): Promise<void> {
     notifyTrackedListeners();
 }
 
-let seenDirty = false;
-let seenFlushTimer: ReturnType<typeof setTimeout> | null = null;
+// One coalesced flush covers *every* history mutation (records and lastSeenAt):
+// persistHistory() writes the whole object, which is O(total history size), so a
+// burst — gap-fill, a gateway event batch, an import — must not become one full
+// re-serialization per change. `history` stays the source of truth for reads;
+// this is durability only, forced on stop and on the load/reset/clear paths.
+let historyDirty = false;
+let historyFlushTimer: ReturnType<typeof setTimeout> | null = null;
+// Serializes writes: two full-history persists must never reach DataStore out of
+// order, or an older snapshot could land last, and concurrent writes to one IDB
+// key must not step on each other.
+let persistChain: Promise<void> = Promise.resolve();
+
+function queuePersist(): Promise<void> {
+    // Never rejects: a failed write is logged, but must not poison later writes
+    // in the chain or surface as an unhandled rejection in a `void` caller.
+    persistChain = persistChain
+        .then(() => {
+            const payload: StoredHistory = { version: HISTORY_VERSION, users: history };
+            return set(HISTORY_KEY, payload);
+        })
+        .catch(e => log.warn("Writing avatar history failed", e));
+    return persistChain;
+}
+
+/** Force a durable write now (awaited by the load / reset / clear paths). */
+export function persistHistory(): Promise<void> {
+    historyDirty = false;
+    if (historyFlushTimer != null) {
+        clearTimeout(historyFlushTimer);
+        historyFlushTimer = null;
+    }
+    return queuePersist();
+}
+
+/** Mark the store changed and schedule one coalesced write (see above). */
+export function markHistoryDirty(): void {
+    historyDirty = true;
+    if (historyFlushTimer != null) return;
+    historyFlushTimer = setTimeout(() => {
+        historyFlushTimer = null;
+        historyDirty = false;
+        void queuePersist();
+    }, SEEN_FLUSH_INTERVAL_MS);
+}
+
+/** Flush pending writes if any. Called on plugin stop. */
+export async function flushHistory(): Promise<void> {
+    if (historyFlushTimer != null) {
+        clearTimeout(historyFlushTimer);
+        historyFlushTimer = null;
+    }
+    if (!historyDirty) return;
+    await persistHistory();
+}
 
 /** Confirms a user's current avatar. Writes are coalesced: in memory immediately,
  *  flushed at most once per interval. */
@@ -144,28 +209,7 @@ export function setLastSeen(userId: string, at = Date.now()): void {
     // Safe to mutate in place: the records array reference is untouched, so
     // useSyncExternalStore snapshots stay stable and don't re-render.
     entry.lastSeenAt = at;
-    seenDirty = true;
-    if (seenFlushTimer != null) return;
-    seenFlushTimer = setTimeout(() => {
-        seenFlushTimer = null;
-        void flushLastSeen();
-    }, SEEN_FLUSH_INTERVAL_MS);
-}
-
-/** Flushes pending `lastSeenAt` updates. Called on plugin stop. */
-export async function flushLastSeen(): Promise<void> {
-    if (seenFlushTimer != null) {
-        clearTimeout(seenFlushTimer);
-        seenFlushTimer = null;
-    }
-    if (!seenDirty) return;
-    seenDirty = false;
-    await persistHistory();
-}
-
-export async function persistHistory(): Promise<void> {
-    const payload: StoredHistory = { version: HISTORY_VERSION, users: history };
-    await set(HISTORY_KEY, payload);
+    markHistoryDirty();
 }
 
 export async function persistTrackedSet(): Promise<void> {
@@ -214,14 +258,14 @@ export async function recordAvatarSeen(userId: string, rec: AvatarRecord): Promi
             next[i] = patched;
             next.sort((a, b) => b.timestamp - a.timestamp);
             history[userId] = { records: next, lastSeenAt: entry.lastSeenAt };
-            await persistHistory();
+            markHistoryDirty();
             notifyListeners();
         }
         return;
     }
     const records = [...recs, rec].sort((a, b) => b.timestamp - a.timestamp);
     history[userId] = { records, lastSeenAt: entry?.lastSeenAt ?? 0 };
-    await persistHistory();
+    markHistoryDirty();
     notifyListeners();
 }
 
@@ -233,7 +277,7 @@ export async function removeRecord(userId: string, rec: AvatarRecord): Promise<v
     else delete history[userId];
     await del(blobKeyFor(userId, rec.hash));
     revokeBlobObjectUrl(userId, rec);
-    await persistHistory();
+    markHistoryDirty();
     notifyListeners();
 }
 

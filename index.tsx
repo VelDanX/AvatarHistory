@@ -36,7 +36,7 @@ export default definePlugin({
     name: "AvatarHistory",
     description: "Passively save avatar history of tracked users and browse it from their profile.",
     authors: [{ name: "VelDanX", id: 1348551557355933759n }],
-    version: "0.0.6",
+    version: "0.0.7",
     settings,
     dependencies: ["ProfileSectionsAPI"],
 

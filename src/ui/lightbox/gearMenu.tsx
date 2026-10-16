@@ -15,15 +15,12 @@ export function openGearMenu(
         rememberCurrent(): void;
         isTrackedUser: boolean;
         toggleTrack(): void;
-        exporting: boolean;
-        onExport(): void;
-        onImport(): void;
         onClear(): void;
     }
 ): void {
     e.preventDefault();
     e.stopPropagation();
-    const { rememberCurrent, isTrackedUser, toggleTrack, exporting, onExport, onImport, onClear } = deps;
+    const { rememberCurrent, isTrackedUser, toggleTrack, onClear } = deps;
     ContextMenuApi.openContextMenu(e, () => (
         <Menu.Menu
             navId="vc-avh-lb-actions"
@@ -43,22 +40,9 @@ export function openGearMenu(
                     action={toggleTrack}
                 />
             </Menu.MenuGroup>
-            <Menu.MenuGroup label="Import / Export">
-                <Menu.MenuItem
-                    id="export"
-                    label="Export all history (.json)"
-                    disabled={exporting}
-                    action={() => void onExport()}
-                />
-                <Menu.MenuItem
-                    id="import"
-                    label="Import (.json)"
-                    action={onImport}
-                />
-            </Menu.MenuGroup>
             <Menu.MenuItem
                 id="clear"
-                label="Clear all history"
+                label="Clear history for this user"
                 color="danger"
                 action={onClear}
             />

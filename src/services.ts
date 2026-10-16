@@ -8,7 +8,7 @@ import { Logger } from "@utils/Logger";
 import { UserStore } from "@webpack/common";
 
 import { migratePollIntervalSetting, settings } from "./settings";
-import { clearBlobUrls, flushLastSeen, loadStore, setTracked } from "./store";
+import { clearBlobUrls, flushHistory, loadStore, setTracked } from "./store";
 import { purgeInvalidRecords } from "./sync/cdn";
 import { startGatewayTracking, stopGatewayTracking } from "./sync/gateway";
 import { pullRecentFromServer } from "./sync/recentSync";
@@ -151,6 +151,6 @@ export function stopAvatarHistory(): void {
     stopRecentSync();
     stopBackgroundSync();
     clearBlobUrls();
-    // A sweep may have touched lastSeenAt moments before shutdown.
-    void flushLastSeen();
+    // A sweep may have touched the store moments before shutdown.
+    void flushHistory();
 }

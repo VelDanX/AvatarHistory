@@ -28,7 +28,7 @@ import {
     useTrackedUsers
 } from "../../store";
 import { recordCdnSize, STAGE_SIZES, useAvatarImage } from "../useAvatarImage";
-import { applyAvatar, downloadAvatar, exportHistoryFile, importHistoryFile, rememberCurrentAvatar } from "./actions";
+import { applyAvatar, downloadAvatar, rememberCurrentAvatar } from "./actions";
 import { AvatarRail } from "./AvatarRail";
 import { ConfirmBar } from "./ConfirmBar";
 import { openGearMenu } from "./gearMenu";
@@ -83,15 +83,39 @@ function panLimits(el: HTMLImageElement, scale: number): { x: number; y: number;
     };
 }
 
+/** Nav arrow. A flex item of the stage that hugs the frame, so the distance
+ *  between arrow and image is fixed at any window size — unlike a hardcoded
+ *  offset from the screen centre, which either covers the image or drifts off
+ *  into the void as the frame shrinks. */
+function NavButton({ dir, onClick }: { dir: "left" | "right"; onClick(): void; }) {
+    const prev = dir === "left";
+    return (
+        <button
+            type="button"
+            className={cl("lb-nav-btn", prev ? "prev" : "next")}
+            aria-label={prev ? "Previous" : "Next"}
+            data-tip={prev ? "Previous (←)" : "Next (→)"}
+            data-nav={prev ? "prev" : "next"}
+            onMouseDown={e => e.stopPropagation()}
+            onClick={e => { e.stopPropagation(); onClick(); }}
+        >
+            <ArrowWithTail dir={dir} />
+        </button>
+    );
+}
+
 /** Main stage image. Mounted with a `key` on `rec.hash`: the stored-copy fetch
  *  and the CDN fallback chain both belong to a single record. The wheel zooms
  *  around the cursor and a double-click jumps toward the pointer (again to
  *  reset); dragging pans. The image is magnified inside its frame and never
- *  leaves it. */
-function StageImage({ userId, rec, onContextMenu }: {
+ *  leaves it. Every new scale is handed to `onZoomChange`, starting from the
+ *  fit scale each remount brings. */
+function StageImage({ userId, rec, onContextMenu, onZoomChange }: {
     userId: string;
     rec: AvatarRecord;
     onContextMenu(e: React.MouseEvent): void;
+    /** Called with the current scale whenever it changes. */
+    onZoomChange(scale: number): void;
 }) {
     const { src, onLoad, onError } = useAvatarImage(userId, rec, STAGE_SIZES);
     const imgRef = useRef<HTMLImageElement | null>(null);
@@ -103,7 +127,8 @@ function StageImage({ userId, rec, onContextMenu }: {
     const applyView = useCallback((next: { s: number; x: number; y: number; }): void => {
         viewRef.current = next;
         setView(next);
-    }, []);
+        onZoomChange(next.s);
+    }, [onZoomChange]);
 
     // Zoom keeping the point under (px, py) fixed. The frame is never
     // transformed, so its centre is the image's untransformed centre even while
@@ -130,6 +155,13 @@ function StageImage({ userId, rec, onContextMenu }: {
             y: clamp(cur.y * k + (py - cy) * (1 - k), -lim.y, lim.y),
         });
     }, [applyView]);
+
+    // Remounted per record (key={rec.hash}), so the view above starts at the
+    // fit scale again: report it once so an outside observer can't keep the
+    // previous record's zoom.
+    useEffect(() => {
+        onZoomChange(ZOOM_MIN);
+    }, [onZoomChange]);
 
     // Native non-passive listener so zooming the wheel doesn't scroll the app.
     useEffect(() => {
@@ -223,9 +255,13 @@ function AvatarLightbox({ userId, initialIndex, modalProps }: { userId: string; 
     const [confirmClear, setConfirmClear] = useState(false);
     const [confirmSet, setConfirmSet] = useState(false);
     const [setting, setSetting] = useState(false);
-    const [exporting, setExporting] = useState(false);
-    const [importing, setImporting] = useState(false);
-    const [fileInput, setFileInput] = useState<HTMLInputElement | null>(null);
+    /** Current stage zoom, mirrored up from StageImage; 1 is the fit size. */
+    const [scale, setScale] = useState(ZOOM_MIN);
+
+    // The stage image's zoom, kept in the parent so the info pill can show it.
+    // StageImage remounts (and resets to the fit scale) per record, so this
+    // follows whenever the record changes.
+    const onZoomChange = useCallback((s: number) => setScale(s), []);
 
     const isSelf = userId === UserStore.getCurrentUser().id;
 
@@ -244,27 +280,6 @@ function AvatarLightbox({ userId, initialIndex, modalProps }: { userId: string; 
         setConfirmClear(false);
         void clearUserHistory(userId);
         showToast("History cleared", Toasts.Type.SUCCESS);
-    };
-
-    const handleExport = async (): Promise<void> => {
-        setExporting(true);
-        try {
-            await exportHistoryFile();
-        } finally {
-            setExporting(false);
-        }
-    };
-
-    const handleImport = async (e: React.FormEvent<HTMLInputElement>): Promise<void> => {
-        const file = e.currentTarget.files?.[0];
-        if (!file) return;
-        e.currentTarget.value = "";
-        setImporting(true);
-        try {
-            await importHistoryFile(file);
-        } finally {
-            setImporting(false);
-        }
     };
 
     const handleRememberCurrent = async (): Promise<void> => {
@@ -286,6 +301,10 @@ function AvatarLightbox({ userId, initialIndex, modalProps }: { userId: string; 
 
     if (!rec) return null;
 
+    // While a confirm bar is open it owns the rail's slot, so the thumbnails
+    // fade out instead of sitting behind it (see .vc-avh-confirming).
+    const confirming = confirmDelete || confirmClear || confirmSet;
+
     const date = moment(rec.timestamp);
     // For the "copy URL" action, not for display: the size the stage itself
     // asks for, capped at the avatar's own resolution, so the copied link is
@@ -299,7 +318,6 @@ function AvatarLightbox({ userId, initialIndex, modalProps }: { userId: string; 
 
     const imageMenuDeps = {
         isSelf,
-        rec,
         onSet: () => setConfirmSet(true),
         onDownload: handleDownload,
         onCopy: handleCopy,
@@ -310,15 +328,12 @@ function AvatarLightbox({ userId, initialIndex, modalProps }: { userId: string; 
         rememberCurrent: () => void handleRememberCurrent(),
         isTrackedUser,
         toggleTrack,
-        exporting,
-        onExport: () => void handleExport(),
-        onImport: () => fileInput?.click(),
         onClear: () => setConfirmClear(true),
     };
 
     return (
         <div
-            className={cl("lightbox-backdrop")}
+            className={cl("lightbox-backdrop", confirming && "confirming")}
             onMouseDown={() => keySinkRef.current?.focus()}
             onClick={e => {
                 if (e.target === e.currentTarget) {
@@ -343,56 +358,31 @@ function AvatarLightbox({ userId, initialIndex, modalProps }: { userId: string; 
                 tabIndex={-1}
                 style={{ position: "absolute", width: 0, height: 0, outline: "none", overflow: "hidden" }}
             />
-            <input
-                ref={setFileInput}
-                type="file"
-                accept="application/json,.json"
-                style={{ display: "none" }}
-                onChange={e => void handleImport(e)}
-            />
 
             <div className={cl("lb-info")}>
-                <span className={cl("lb-counter")}>{index + 1} of {recCount}</span>
+                <span className={cl("lb-position")}>
+                    <span className={cl("lb-counter")}>{index + 1} of {recCount}</span>
+                    <span className={cl("lb-zoom")}>{Math.round(scale * 100)}%</span>
+                </span>
+                <span className={cl("lb-sep")} aria-hidden="true" />
                 <span className={cl("lb-meta")}>
                     {date.format("D MMM YYYY H:mm")} UTC{tz}
                     {rec.width && rec.height ? ` · ${rec.width}×${rec.height}` : ""}
                 </span>
             </div>
 
-            {recCount > 1 && (
-                <>
-                    <button
-                        type="button"
-                        className={cl("lb-nav-btn", "prev")}
-                        aria-label="Previous"
-                        data-tip="Previous (←)"
-                        data-nav="prev"
-                        onMouseDown={e => e.stopPropagation()}
-                        onClick={e => { e.stopPropagation(); go(-1); }}
-                    >
-                        <ArrowWithTail dir="left" />
-                    </button>
-                    <button
-                        type="button"
-                        className={cl("lb-nav-btn", "next")}
-                        aria-label="Next"
-                        data-tip="Next (→)"
-                        data-nav="next"
-                        onMouseDown={e => e.stopPropagation()}
-                        onClick={e => { e.stopPropagation(); go(1); }}
-                    >
-                        <ArrowWithTail dir="right" />
-                    </button>
-                </>
-            )}
+            <div className={cl("lb-stage", recCount > 1 && "has-nav")}>
+                {recCount > 1 && <NavButton dir="left" onClick={() => go(-1)} />}
 
-            <div className={cl("lb-stage")}>
                 <StageImage
                     key={rec.hash}
                     userId={userId}
                     rec={rec}
                     onContextMenu={e => openImageContextMenu(e, imageMenuDeps)}
+                    onZoomChange={onZoomChange}
                 />
+
+                {recCount > 1 && <NavButton dir="right" onClick={() => go(1)} />}
             </div>
 
             <LightboxToolbar
