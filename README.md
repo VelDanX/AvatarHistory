@@ -37,13 +37,18 @@ Vencord / Equicord userplugin that passively records avatar changes and lets you
 
 ![Profile section](docs/screenshots/profile-section.png)
 
-**Lightbox** — fullscreen viewer over the whole history: large preview, a "1 of N" counter, the record timestamp (UTC plus your local offset), the image size and the live zoom percentage on top, an action bar at the bottom (set as profile avatar, download, copy URL, delete, "More" menu), and a rail of all saved avatars below. The rail scrolls horizontally with no visible scrollbar; an edge fades out whenever thumbnails are cut off on that side:
+**Lightbox** — fullscreen viewer over the whole history: large preview, a "1 of N" counter, the record timestamp (UTC plus your local offset), the image size and the live zoom percentage on top, an action bar at the bottom (set as profile avatar, download, copy URL, delete, "More" menu), and a rail of all saved avatars below. The rail keeps the current avatar centred, scrolls horizontally with no visible scrollbar, and fades an edge whenever thumbnails are cut off on that side:
 
 ![Lightbox](docs/screenshots/lightbox.png)
 
-**Setting a saved avatar** — from the Lightbox you can apply any of your own stored avatars as your profile picture (toolbar button or image right-click menu; animated ones need Nitro). Discord confirms it with a green "Avatar updated" toast:
+**Image menu** — right-click the avatar inside the viewer for "Set as avatar", "Download", "Copy URL" and "Delete":
 
-![Setting Avatar — apply a stored avatar as your profile picture](docs/screenshots/set-avatar.jpg)
+![Image menu](docs/screenshots/image-menu.png)
+
+**Setting a saved avatar** — from the Lightbox you can apply any of your own stored avatars as your profile picture (toolbar button or image right-click menu; animated ones need Nitro). A confirmation asks first, the upload runs in place, and Discord confirms it with a green "Avatar updated" toast:
+
+![Setting Avatar — confirm applying a stored avatar](docs/screenshots/set-avatar.jpg)
+![Setting avatar — the upload runs in place](docs/screenshots/set-avatar-progress.jpg)
 ![Avatar updated — the green confirmation toast](docs/screenshots/avatar-updated.jpg)
 
 **Zoom** — the fullscreen viewer magnifies an avatar inside its frame with the mouse wheel or a double-click, and shows the current percentage in the info pill while zoomed:
@@ -211,13 +216,18 @@ refactor cannot break the rest of the plugin.
 
 ![Секция в профиле](docs/screenshots/profile-section.png)
 
-**Галерея (лайтбокс)** — полноэкранный просмотр всей истории: крупный аватар, счётчик «1 of N», дата записи (UTC + локальный часовой пояс), размер картинки и текущий процент зума сверху, панель действий снизу (поставить как аватар профиля для своей истории, скачивание, копия URL, удаление, меню «More») и лента всех сохранённых аватаров. Лента прокручивается по горизонтали без видимого скроллбара, а её край затемняется, если с этой стороны аватары обрезаны:
+**Галерея (лайтбокс)** — полноэкранный просмотр всей истории: крупный аватар, счётчик «1 of N», дата записи (UTC + локальный часовой пояс), размер картинки и текущий процент зума сверху, панель действий снизу (поставить как аватар профиля для своей истории, скачивание, копия URL, удаление, меню «More») и лента всех сохранённых аватаров. Лента держит текущий аватар по центру, прокручивается по горизонтали без видимого скроллбара и затемняет край, если с этой стороны аватары обрезаны:
 
 ![Лайтбокс](docs/screenshots/lightbox.png)
 
-**Установка сохранённого аватара** — прямо в лайтбоксе можно поставить любой из своих сохранённых аватаров как аватар профиля (кнопка на панели или ПКМ по картинке; для анимированных нужен Nitro). Discord подтверждает зелёным уведомлением «Avatar updated»:
+**Меню картинки** — ПКМ по аватару внутри просмотрщика: «Set as avatar», «Download», «Copy URL» и «Delete»:
 
-![Установка аватара — применить сохранённый аватар как аватар профиля](docs/screenshots/set-avatar.jpg)
+![Меню картинки](docs/screenshots/image-menu.png)
+
+**Установка сохранённого аватара** — прямо в лайтбоксе можно поставить любой из своих сохранённых аватаров как аватар профиля (кнопка на панели или ПКМ по картинке; для анимированных нужен Nitro). Сначала спрашивается подтверждение, загрузка идёт на месте, а Discord подтверждает зелёным уведомлением «Avatar updated»:
+
+![Установка аватара — подтверждение применения сохранённого аватара](docs/screenshots/set-avatar.jpg)
+![Установка аватара — загрузка идёт на месте](docs/screenshots/set-avatar-progress.jpg)
 ![Avatar updated — зелёное уведомление о подтверждении](docs/screenshots/avatar-updated.jpg)
 
 **Зум** — полноэкранный просмотрщик увеличивает аватар внутри рамки колесом мыши или двойным кликом, а пока зум включён, в инфо-пилле сверху виден текущий процент:
