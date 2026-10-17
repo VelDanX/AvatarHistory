@@ -55,6 +55,8 @@ Vencord / Equicord userplugin that passively records avatar changes and lets you
 
 [![Set an avatar and zoom — scroll or double-click to magnify (video)](docs/screenshots/set-avatar-zoom.jpg)](docs/screenshots/set-avatar-zoom.mp4)
 
+[![New preview video](docs/screenshots/Preview.png)](docs/screenshots/Preview.mp4)
+
 ## Settings
 
 | Setting | Default | Description |
@@ -233,6 +235,8 @@ refactor cannot break the rest of the plugin.
 **Зум** — полноэкранный просмотрщик увеличивает аватар внутри рамки колесом мыши или двойным кликом, а пока зум включён, в инфо-пилле сверху виден текущий процент:
 
 [![Установка аватара и зум — скролл или двойной клик для увеличения (видео)](docs/screenshots/set-avatar-zoom.jpg)](docs/screenshots/set-avatar-zoom.mp4)
+
+[![Новое превью видео](docs/screenshots/Preview.png)](docs/screenshots/Preview.mp4)
 
 ## Настройки
 
