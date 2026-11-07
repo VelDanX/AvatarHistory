@@ -6,7 +6,7 @@
 
 import { Logger } from "@utils/Logger";
 import { User } from "@vencord/discord-types";
-import { Constants, RelationshipStore, RestAPI, Toasts, UserStore } from "@webpack/common";
+import { Constants, RelationshipStore, RestAPI, showToast, UserStore } from "@webpack/common";
 
 import {
     AVATAR_ATTEMPT_LIMIT,
@@ -176,13 +176,13 @@ export async function resetAndResync(): Promise<void> {
     // right after the history it guarded was erased. resetAllHistory cannot
     // reach it (different module), so it is cleared here, next to the reset.
     avatarAttempts.clear();
-    Toasts.show({ message: "AvatarHistory: history cleared", type: Toasts.Type.SUCCESS, id: Toasts.genId() });
+    showToast({ text: "AvatarHistory: history cleared", variant: "success" });
     if (settings.store.trackSelf && self) {
         // resetAllHistory also cleared the tracked set — restore self.
         await setTracked(self.id, true);
         const added = await pullRecentFromServer();
         void purgeInvalidRecords(self.id);
-        if (added) Toasts.show({ message: `AvatarHistory: ${added} recent avatar(s) restored`, type: Toasts.Type.SUCCESS, id: Toasts.genId() });
+        if (added) showToast({ text: `AvatarHistory: ${added} recent avatar(s) restored`, variant: "success" });
     }
 }
 

@@ -11,7 +11,6 @@ import {
     moment,
     openModal,
     showToast,
-    Toasts,
     useCallback,
     useEffect,
     useRef,
@@ -273,18 +272,18 @@ function AvatarLightbox({ userId, initialIndex, modalProps }: { userId: string; 
         setConfirmDelete(false);
         if (!r) return;
         void removeRecord(userId, r);
-        showToast("Avatar deleted", Toasts.Type.SUCCESS);
+        showToast({ text: "Avatar deleted", variant: "success" });
     };
 
     const confirmClearHistory = (): void => {
         setConfirmClear(false);
         void clearUserHistory(userId);
-        showToast("History cleared", Toasts.Type.SUCCESS);
+        showToast({ text: "History cleared", variant: "success" });
     };
 
     const handleRememberCurrent = async (): Promise<void> => {
-        if (await rememberCurrentAvatar(userId)) showToast("Avatar saved", Toasts.Type.SUCCESS);
-        else showToast("No avatar to save", Toasts.Type.FAILURE);
+        if (await rememberCurrentAvatar(userId)) showToast({ text: "Avatar saved", variant: "success" });
+        else showToast({ text: "No avatar to save", variant: "critical" });
     };
 
     const handleApplyAvatar = async (): Promise<void> => {

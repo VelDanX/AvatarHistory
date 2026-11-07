@@ -5,7 +5,7 @@
  */
 
 import { Logger } from "@utils/Logger";
-import { RestAPI, Toasts, UserStore } from "@webpack/common";
+import { RestAPI, showToast, UserStore } from "@webpack/common";
 
 import { fetchAvatarBlob, getHistory, sameHash } from "../store";
 import { purgeInvalidRecords } from "./cdn";
@@ -98,10 +98,9 @@ export async function syncRecentNow(): Promise<number> {
         added > 0 ? `${added} new avatar(s)` : "",
         removed > 0 ? `${removed} invalid(s) removed` : "",
     ].filter(Boolean);
-    Toasts.show({
-        message: `AvatarHistory: ${parts.length ? parts.join(", ") : "nothing new"}`,
-        type: added > 0 ? Toasts.Type.SUCCESS : Toasts.Type.MESSAGE,
-        id: Toasts.genId(),
+    showToast({
+        text: `AvatarHistory: ${parts.length ? parts.join(", ") : "nothing new"}`,
+        variant: added > 0 ? "success" : "default",
     });
     return added;
 }

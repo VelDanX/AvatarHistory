@@ -7,7 +7,7 @@
 import { copyWithToast } from "@utils/discord";
 import { saveFile } from "@utils/web";
 import { User } from "@vencord/discord-types";
-import { FluxDispatcher, moment, RestAPI, showToast, Toasts, UserStore } from "@webpack/common";
+import { FluxDispatcher, moment, RestAPI, showToast, UserStore } from "@webpack/common";
 
 import { BLOB_FETCH_SIZES } from "../../config";
 import {
@@ -61,21 +61,21 @@ export async function rememberCurrentAvatar(userId: string): Promise<boolean> {
 export async function applyAvatar(userId: string, rec: AvatarRecord): Promise<void> {
     const dataUrl = await avatarToDataUrl(userId, rec);
     if (!dataUrl) {
-        showToast("Could not load the avatar image", Toasts.Type.FAILURE);
+        showToast({ text: "Could not load the avatar image", variant: "critical" });
         return;
     }
     try {
         const res = await RestAPI.patch({ url: "/users/@me", body: { avatar: dataUrl } });
         const self = (res as { body?: User })?.body;
         if (self?.id) FluxDispatcher.dispatch({ type: "CURRENT_USER_UPDATE", user: self });
-        showToast("Avatar updated", Toasts.Type.SUCCESS);
+        showToast({ text: "Avatar updated", variant: "success" });
     } catch (err) {
         const e = err as { body?: { message?: string; }; };
         const message = e?.body?.message;
         if (rec.format === "gif" || /nitro|premium/i.test(message ?? "")) {
-            showToast("Animated avatars require Nitro", Toasts.Type.FAILURE);
+            showToast({ text: "Animated avatars require Nitro", variant: "critical" });
         } else {
-            showToast("Failed to set avatar", Toasts.Type.FAILURE);
+            showToast({ text: "Failed to set avatar", variant: "critical" });
         }
     }
 }
@@ -90,11 +90,11 @@ export async function exportHistoryFile(): Promise<void> {
 export async function importHistoryFile(file: File): Promise<void> {
     try {
         const imported = await parseImport(await file.text());
-        showToast(
-            imported ? `Imported ${imported} new record${imported === 1 ? "" : "s"}` : "No new records in file",
-            imported ? Toasts.Type.SUCCESS : Toasts.Type.MESSAGE
-        );
+        showToast({
+            text: imported ? `Imported ${imported} new record${imported === 1 ? "" : "s"}` : "No new records in file",
+            variant: imported ? "success" : "default"
+        });
     } catch {
-        showToast("Invalid avatar history file", Toasts.Type.FAILURE);
+        showToast({ text: "Invalid avatar history file", variant: "critical" });
     }
 }
