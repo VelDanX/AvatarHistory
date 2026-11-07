@@ -76,7 +76,7 @@ The settings screen — toggles for tracking, a live overview of tracked users (
 
 ## Installation
 
-Same steps for Vencord and Equicord — for Equicord, the plugin also goes into `src/userplugins/`.
+Vencord is temporarily not supported. The plugin also goes into `src/userplugins/`.
 
 > **Warning:** requires the developer build — production builds ship without userplugins.
 >
@@ -257,7 +257,7 @@ refactor cannot break the rest of the plugin.
 
 ## Установка
 
-Шаги одинаковы для Vencord и Equicord — в Equicord плагин также кладётся в `src/userplugins/`.
+Vencord временно не поддерживается. Плагин кладётся в `src/userplugins/`.
 
 > **Внимание:** нужна developer-сборка — в production-сборках плагинов нет.
 >
